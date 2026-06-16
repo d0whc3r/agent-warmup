@@ -1,0 +1,89 @@
+// Centralized paths and identifiers used across the CLI.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { isSea } from 'node:sea';
+import type { ProviderId } from './types.js';
+
+// In a single-executable build there is no source file on disk — import.meta.url is
+// a data: URL — so anchor on the executable instead of the source location.
+const IN_SEA = isSea();
+const SRC_DIR = IN_SEA
+  ? path.dirname(process.execPath)
+  : path.dirname(fileURLToPath(import.meta.url));
+
+export const HOME = os.homedir();
+export const USER = os.userInfo().username;
+export const UID = os.userInfo().uid;
+
+// Repo root (package dir), so paths work wherever the project lives.
+export const REPO_ROOT = path.resolve(SRC_DIR, '..');
+
+// Single home for everything the warmup owns — logs, config, cache and the tmux
+// workdir all live here, so the footprint is one self-contained, age-managed dir.
+export const WARMUP_HOME = process.env.WARMUP_HOME || path.join(HOME, '.claude', 'warmup');
+
+// The CLI entry node is currently executing: the bundled bin (dist/claude-warmup.mjs)
+// when installed, or src/cli.js under tsx / the global shim in dev. Resolved to an
+// absolute path so the scheduler can re-invoke `… tick` regardless of launchd/cron's
+// working directory. (argv[1] is the real entry whatever its filename; the fallback
+// only matters in the degenerate case of no script entry.)
+export const CLI_ENTRY = path.resolve(process.argv[1] ?? path.join(SRC_DIR, 'cli.js'));
+// The node binary running this process — embedded in the smart-mode plist/cron so
+// the scheduler can invoke the tick without relying on a login PATH.
+export const NODE_BIN = process.execPath;
+// How a scheduler entry re-invokes this CLI headlessly: `node <entry> …` in dev/npm,
+// or just the executable itself when packaged (it is its own entry point).
+export const SELF_INVOCATION = IN_SEA ? [process.execPath] : [NODE_BIN, CLI_ENTRY];
+
+// Backward-compat: the legacy /usage probe in claude.ts still references
+// CLAUDE_BIN by name. New code uses provider config (multi.providers.claude.binary).
+export const CLAUDE_BIN = process.env.CLAUDE_BIN || path.join(HOME, '.local', 'bin', 'claude');
+
+// tmux lives in different prefixes per platform (Homebrew on macOS, /usr/bin on most
+// Linux). Pick the first that exists so the probe's accessSync() guard gets an absolute
+// path; fall back to a bare name (resolved via PATH when spawned) if none are found.
+function firstExecutable(candidates: string[], fallback: string): string {
+  for (const p of candidates) {
+    try {
+      fs.accessSync(p, fs.constants.X_OK);
+      return p;
+    } catch {
+      /* keep looking */
+    }
+  }
+  return fallback;
+}
+export const TMUX_BIN =
+  process.env.TMUX_BIN ||
+  firstExecutable(
+    ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux', '/bin/tmux'],
+    'tmux',
+  );
+export const WARMUP_WORKDIR = process.env.WARMUP_WORKDIR || path.join(WARMUP_HOME, 'workdir');
+
+// Per-provider arm scripts (one per provider; the registry decides which get
+// materialized). Source path is where the script ships in the source tree;
+// runtime path is where it lands under WARMUP_HOME for SEA / npm installs.
+export const ASSETS_DIR = path.join(REPO_ROOT, 'src', 'assets');
+export const ARM_SCRIPT_SRC = (id: ProviderId): string => path.join(ASSETS_DIR, `arm-${id}.sh`);
+export const ARM_SCRIPT = (id: ProviderId): string =>
+  process.env[`WARMUP_${id.toUpperCase()}_SCRIPT`] ||
+  (IN_SEA ? path.join(WARMUP_HOME, `arm-${id}.sh`) : ARM_SCRIPT_SRC(id));
+
+// launchd
+export const LABEL = `com.${USER}.claude-warmup`;
+export const PLIST_PATH = path.join(HOME, 'Library', 'LaunchAgents', `${LABEL}.plist`);
+export const GUI_DOMAIN = `gui/${UID}`;
+
+// logs + config (all under WARMUP_HOME)
+export const LOG_DIR = path.join(WARMUP_HOME, 'logs');
+export const WARMUP_LOG = path.join(LOG_DIR, 'warmup.log');
+export const CRON_LOG = path.join(LOG_DIR, 'cron.log');
+export const CONFIG_PATH = path.join(WARMUP_HOME, 'warmup.env');
+
+// Backward-compat: the legacy `~/.claude/warmup/usage-cache.json` path. New code
+// reads the per-provider cache from the same file; the on-disk format is just a
+// shape change (flat → { providers: { claude, opencode } }), not a path change.
+export const USAGE_CACHE = path.join(WARMUP_HOME, 'usage-cache.json');

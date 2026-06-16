@@ -1,0 +1,124 @@
+name: Release
+
+# Build the single-executable (SEA) for every target from a single ubuntu-latest
+# runner — no macOS/arm runners. Runs on version tags (attaching binaries to the
+# GitHub Release) and on manual dispatch (artifacts only, to test the build).
+#
+# How cross-compile works: `node --build-sea` (Node 26) injects the app blob into a
+# *target* Node runtime via LIEF, so the host arch/OS does not matter. Each matrix row
+# downloads that target's official Node build and points sea-config.json's `executable`
+# at it. sea-config.json keeps useCodeCache/useSnapshot off (both are platform-specific
+# and would crash a cross-built binary).
+#
+# Signing: Linux needs none. macOS Mach-O is invalidated by the blob injection and
+# arm64 macOS refuses to run unsigned, so we ad-hoc sign it with rcodesign (the Linux
+# build of Apple's codesign). Ad-hoc signing lets it run locally but downloads still
+# hit Gatekeeper quarantine — proper distribution needs a Developer ID cert +
+# notarization (secrets), to be added here when available.
+#
+# Windows is out of scope: the warm mechanism drives a tmux session over bash, absent
+# on Windows.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RCODESIGN_VERSION: '0.29.0' # bump as new apple-platform-rs releases land
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64, os: linux, arch: x64, sign: false }
+          - { target: linux-arm64, os: linux, arch: arm64, sign: false }
+          - { target: darwin-x64, os: darwin, arch: x64, sign: true }
+          - { target: darwin-arm64, os: darwin, arch: arm64, sign: true }
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must run before setup-node so its `cache: pnpm` finds pnpm on PATH.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Bundle the CLI to one platform-agnostic ESM file (dist/claude-warmup.mjs).
+      - name: Bundle CLI
+        run: pnpm run build
+
+      # Download the target platform's Node runtime to inject the blob into. The exact
+      # version is whatever .nvmrc resolved to, so the embedded runtime matches the host.
+      - name: Fetch target Node runtime
+        run: |
+          NODE_VERSION="$(node -v)" # e.g. v26.2.0
+          PKG="node-${NODE_VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+          curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${PKG}.tar.gz" -o node.tar.gz
+          mkdir -p target-node
+          tar xf node.tar.gz -C target-node --strip-components=1
+          echo "TARGET_NODE=$PWD/target-node/bin/node" >> "$GITHUB_ENV"
+
+      - name: Build SEA (cross-compile into target runtime)
+        run: |
+          mkdir -p out
+          OUT="out/claude-warmup-${{ matrix.target }}"
+          jq --arg exe "$TARGET_NODE" --arg out "$OUT" \
+            '.executable = $exe | .output = $out' sea-config.json > sea.target.json
+          node --build-sea sea.target.json
+          chmod +x "$OUT"
+
+      # arm64 macOS won't run without a valid signature; ad-hoc is enough to execute.
+      - name: Ad-hoc sign macOS binary
+        if: matrix.sign
+        run: |
+          PKG="apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl"
+          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${PKG}.tar.gz" -o rcodesign.tar.gz
+          tar xf rcodesign.tar.gz
+          RCODESIGN="$(find . -name rcodesign -type f | head -1)" # tolerate layout changes
+          "$RCODESIGN" sign "out/claude-warmup-${{ matrix.target }}"
+
+      # Only the linux-x64 binary can execute on the x64 ubuntu runner; the rest are
+      # foreign binaries we can only build, not run, here.
+      - name: Smoke test (linux-x64)
+        if: matrix.target == 'linux-x64'
+        run: ./out/claude-warmup-linux-x64 help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: claude-warmup-${{ matrix.target }}
+          path: out/claude-warmup-${{ matrix.target }}
+          if-no-files-found: error
+
+  release:
+    name: Attach binaries to the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+          fail_on_unmatched_files: true

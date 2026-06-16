@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["scripts/preview-tui.tsx", "test/*.test.ts"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{ts,tsx}", "test/**/*.ts"],
+  "ignoreBinaries": ["crontab", "launchctl", "less", "tail"]
+}

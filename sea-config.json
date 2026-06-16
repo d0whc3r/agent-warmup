@@ -1,0 +1,12 @@
+{
+  "main": "dist/claude-warmup.mjs",
+  "mainFormat": "module",
+  "output": "dist/claude-warmup",
+  "disableExperimentalSEAWarning": true,
+  "useCodeCache": false,
+  "useSnapshot": false,
+  "assets": {
+    "src/assets/arm-claude.sh": "src/assets/arm-claude.sh",
+    "src/assets/arm-opencode.sh": "src/assets/arm-opencode.sh"
+  }
+}

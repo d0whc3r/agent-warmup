@@ -1,0 +1,75 @@
+{
+  "name": "claude-warmup",
+  "version": "1.0.0",
+  "description": "Keep Claude Code's usage window warm on a schedule (launchd/cron), managed from your terminal.",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cli",
+    "cron",
+    "launchd",
+    "macos",
+    "scheduler",
+    "tmux",
+    "usage-limit",
+    "warmup"
+  ],
+  "homepage": "https://github.com/d0whc3r/claude-warmup#readme",
+  "bugs": {
+    "url": "https://github.com/d0whc3r/claude-warmup/issues"
+  },
+  "license": "MIT",
+  "author": "d0whc3r",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d0whc3r/claude-warmup.git"
+  },
+  "bin": {
+    "claude-warmup": "dist/claude-warmup.mjs"
+  },
+  "files": [
+    "dist",
+    "src/assets/arm-claude.sh",
+    "src/assets/arm-opencode.sh"
+  ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "start": "tsx src/cli.ts",
+    "build": "tsdown",
+    "build:sea": "bash scripts/build-sea.sh",
+    "prepare": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"test/*.test.ts\"",
+    "test:coverage": "node --import tsx --test --experimental-test-coverage \"test/*.test.ts\"",
+    "lint": "oxlint --no-error-on-unmatched-pattern",
+    "lint:fix": "oxlint --no-error-on-unmatched-pattern --fix --fix-suggestions",
+    "format": "oxfmt --no-error-on-unmatched-pattern",
+    "format:check": "oxfmt --no-error-on-unmatched-pattern --check",
+    "format:fix": "pnpm run lint:fix && pnpm run format",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm test"
+  },
+  "dependencies": {
+    "date-fns": "4.4.0",
+    "ink": "7.0.6",
+    "react": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.3",
+    "@types/react": "19.2.17",
+    "knip": "6.17.1",
+    "oxfmt": "0.55.0",
+    "oxlint": "1.70.0",
+    "tsdown": "0.22.2",
+    "tsx": "4.22.4",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.7.0"
+}
