@@ -50,7 +50,7 @@ export function toDate(value: DateLike | null | undefined): Date | null {
 // "3:30pm" / "11am" / "3pm" / "11:00am" -> { h, m } in 24h, or null.
 // Kept as a regex (not date-fns `parse`) because the format is space-less and
 // lowercase; pre-normalizing it for date-fns would be more fragile than this.
-export function parseClock(s: string): { h: number; m: number } | null {
+function parseClock(s: string): { h: number; m: number } | null {
   const m = String(s)
     .trim()
     .match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);

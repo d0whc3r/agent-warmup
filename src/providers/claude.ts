@@ -4,7 +4,7 @@
 // tests import from this module via the same exported names.
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { ARM_SCRIPT, ARM_SCRIPT_SRC, CLAUDE_BIN, TMUX_BIN, WARMUP_WORKDIR } from '../paths.js';
+import { ARM_SCRIPT, ARM_SCRIPT_SRC, TMUX_BIN, WARMUP_WORKDIR, expandHome } from '../paths.js';
 import {
   FIVE_HOURS_MS,
   parseReset,
@@ -59,7 +59,12 @@ export function parseUsage(text: string, now: Date = new Date()): ProviderUsage 
 // Read Claude's three limit blocks by driving `/usage` in a throwaway tmux session
 // and parsing the rendered pane. Returns null on any failure.
 export function probe(ctx: ProbeContext): ProviderUsage | null {
-  if (!isExecutable(CLAUDE_BIN) || !isExecutable(TMUX_BIN)) return null;
+  // Honor the per-provider binary path the user set in WARMUP_CLAUDE_BIN (the
+  // legacy `CLAUDE_BIN` env var still works for the arm script's own fallback,
+  // but the probe should always read the provider config so a custom install
+  // location is respected here too).
+  const binary = expandHome(ctx.cfg.binary);
+  if (!isExecutable(binary) || !isExecutable(TMUX_BIN)) return null;
   const session = `${ctx.cfg.tmuxSession}-usage`;
   const readyWait = Number(process.env.WARMUP_READY_WAIT || 12);
   const responseWait = Number(process.env.WARMUP_RESPONSE_WAIT || 6);
@@ -77,7 +82,7 @@ export function probe(ctx: ProbeContext): ProviderUsage | null {
       '55',
       '-c',
       WARMUP_WORKDIR,
-      CLAUDE_BIN,
+      binary,
       '--safe-mode',
       '--model',
       ctx.cfg.model,
@@ -173,7 +178,7 @@ export function inferFromCache(now: Date, cache: ProviderCache | null): Provider
 // The arm script lives in src/assets/arm-claude.sh so the linter (and editors)
 // can see the bash content as bash, not as a JS template literal. At runtime the
 // runner passes the right WARMUP_* env keys for the script to read.
-export function armScript(): string {
+function armScript(): string {
   return fs.readFileSync(ARM_SCRIPT_SRC('claude'), 'utf8');
 }
 

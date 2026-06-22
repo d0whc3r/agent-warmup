@@ -3,13 +3,12 @@
 // (see spec A-4 + the circuit-breaker in decide()).
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { ARM_SCRIPT, ARM_SCRIPT_SRC } from '../paths.js';
-import { minutesSince, differenceInMilliseconds } from '../time.js';
+import { ARM_SCRIPT, ARM_SCRIPT_SRC, expandHome } from '../paths.js';
+import { differenceInMilliseconds } from '../time.js';
 
 import type { Decision, ProviderCache, ProviderUsage } from '../types.js';
 import type { ProbeContext, Provider } from './types.js';
 
-const GO_DAILY_USD = 12; // 12 USD per 5h
 const GO_WEEKLY_USD = 30; // 30 USD per week
 const FAIL_WINDOW_MS = 30 * 60 * 1000; // 30 min
 const COOLDOWN_MS = 60 * 60 * 1000; // 1h
@@ -27,7 +26,10 @@ function isExecutable(p: string): boolean {
 // Cheap percent parser for `opencode stats --models 1` lines like
 // "  deepseek-v4-flash      1,234 in / 567 out   $0.12".
 // Returns USD spent on the matching model line, or null if not found.
-function parseStatsCost(text: string, model: string): number | null {
+// Exported so the regression test in test/opencode.test.ts can lock the
+// $X.YY / USD X.YY detection in (the original bug: the first regex had an
+// unescaped `$`, which JS reads as end-of-string, so $0.12 never matched).
+export function parseStatsCost(text: string, model: string): number | null {
   // The model id from WARMUP_OPENCODE_MODEL may be "opencode-go/deepseek-v4-flash"
   // or just "deepseek-v4-flash"; we match the tail.
   const needle = model.includes('/') ? model.split('/').slice(1).join('/') : model;
@@ -36,7 +38,8 @@ function parseStatsCost(text: string, model: string): number | null {
     if (!line.includes(needle)) continue;
     // Heuristic: a dollar amount somewhere on the line. opencode stats is still
     // settling its format (v1.17.7+); accept either "$0.12" or "USD 0.12".
-    const m = line.match(/$\s*([0-9]+(?:\.[0-9]+)?)/) || line.match(/USD\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const m =
+      line.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/) || line.match(/USD\s*([0-9]+(?:\.[0-9]+)?)/i);
     if (m) return Number(m[1]);
   }
   return null;
@@ -47,8 +50,9 @@ function parseStatsCost(text: string, model: string): number | null {
 // with no recorded usage, returns a "no usage yet" snapshot so the cache-based
 // fallback (lastWarmAt < 5h ago) drives the decision.
 export function probe(ctx: ProbeContext): ProviderUsage | null {
-  if (!isExecutable(ctx.cfg.binary)) return null;
-  const r = spawnSync(ctx.cfg.binary, ['stats', '--days', '7', '--models', '1'], {
+  const binary = expandHome(ctx.cfg.binary);
+  if (!isExecutable(binary)) return null;
+  const r = spawnSync(binary, ['stats', '--days', '7', '--models', '1'], {
     encoding: 'utf8',
     timeout: 10_000,
   });
@@ -73,7 +77,7 @@ export function probe(ctx: ProbeContext): ProviderUsage | null {
 // Pure decision. The "active window" check is cache-based (the 5h $12 cap isn't
 // queryable today; see spec A-4). The tick injects `cache.lastWarmAt` into the
 // usage object before calling decide, so we can read it here.
-export function decide(ctx: ProbeContext, usage: ProviderUsage | null): Decision {
+function decide(ctx: ProbeContext, usage: ProviderUsage | null): Decision {
   const { workStart, workEnd, weeklyStopPercent } = ctx.cfg;
   const hour = ctx.now.getHours();
   if (hour < workStart || hour >= workEnd) {
@@ -105,7 +109,7 @@ export function decide(ctx: ProbeContext, usage: ProviderUsage | null): Decision
 // Reads all its config from env so the CLI can drive it headlessly.
 // The arm script lives in src/assets/arm-opencode.sh; see the comment in
 // claude.ts for why we keep bash out of JS template literals.
-export function armScript(): string {
+function armScript(): string {
   return fs.readFileSync(ARM_SCRIPT_SRC('opencode'), 'utf8');
 }
 
@@ -149,8 +153,3 @@ export const opencodeProvider: Provider = {
     void err;
   },
 };
-
-// Re-exports for tests.
-export { minutesSince };
-export const OPENCODE_GO_DAILY_USD = GO_DAILY_USD;
-export const OPENCODE_GO_WEEKLY_USD = GO_WEEKLY_USD;

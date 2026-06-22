@@ -183,8 +183,10 @@ switch (cmd) {
     const { id, rest: _r2 } = parseProviderFlag(rest);
     const { results } = runTick({ dryRun, providerId: id });
     for (const r of results) console.log(`[${r.id}] ${r.decision.action} — ${r.decision.reason}`);
-    const warmed = results.find((r) => r.decision.action === 'warm' && !dryRun);
-    process.exit(warmed ? warmed.status : 0);
+    // Surface the worst arm status so launchd/cron monitoring sees failures
+    // from any provider, not just the first one in the iteration order.
+    const failed = results.find((r) => r.status !== 0);
+    process.exit(failed ? failed.status : 0);
   }
   case 'run':
   case 'now': {
@@ -234,7 +236,22 @@ switch (cmd) {
     break;
   }
   case 'model': {
-    const model = requireChoice('model', MODELS, rest[0]);
+    const model = rest[0];
+    if (!model) {
+      console.error('Usage: claude-warmup model <name>');
+      process.exit(1);
+    }
+    // The claude provider is constrained to {haiku, sonnet, opus}; opencode
+    // (and any future provider) takes arbitrary model names. Validate only when
+    // the selected provider is claude so an opencode user can run the same
+    // `model <name>` subcommand with provider-specific ids.
+    const selId = loadConfig().shared.selectedProvider;
+    if (selId === 'claude' && !(MODELS as readonly string[]).includes(model)) {
+      console.error(
+        `model must be one of: ${MODELS.join(', ')} (or \`provider opencode enable\` and \`provider opencode model <name>\` for arbitrary names)`,
+      );
+      process.exit(1);
+    }
     saveField({ model }, `model set: ${model}`);
     break;
   }

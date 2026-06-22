@@ -58,13 +58,17 @@ test('.env.example documents every config key and shows the defaults', () => {
     assert.ok(new RegExp(`^${k}=`, 'm').test(example), `missing ${k}`);
   }
   // Parsing the example must yield a config equal to the multi-provider
-  // defaults. (Only the first provider is enabled by default in the example,
-  // matching DEFAULT_MULTI.)
+  // defaults. The enabled-providers list is what matters here: the example
+  // documents `WARMUP_PROVIDERS=claude,opencode` (the full csv) but flags
+  // opencode as opt-in, so the filtered (enabled) list is just `['claude']`.
   const parsed = parseMultiConfig(example);
+  const enabledDefaults = DEFAULT_MULTI.shared.providers.filter(
+    (id) => DEFAULT_MULTI.providers[id]?.enabled,
+  );
   assert.equal(parsed.shared.mode, DEFAULT_MULTI.shared.mode);
   assert.equal(parsed.shared.scheduler, DEFAULT_MULTI.shared.scheduler);
   assert.equal(parsed.shared.tickMinutes, DEFAULT_MULTI.shared.tickMinutes);
-  assert.deepEqual(parsed.shared.providers, DEFAULT_MULTI.shared.providers);
+  assert.deepEqual(parsed.shared.providers, enabledDefaults);
   assert.equal(parsed.shared.selectedProvider, DEFAULT_MULTI.shared.selectedProvider);
   assert.equal(parsed.providers.claude.model, DEFAULT_MULTI.providers.claude.model);
   assert.equal(parsed.providers.claude.workStart, DEFAULT_MULTI.providers.claude.workStart);

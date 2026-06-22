@@ -21,8 +21,9 @@ manages the mode, schedule, model, and the scheduler (launchd or cron) for you.
 
 `claude-warmup` keeps **two independent usage windows warm from a single CLI,
 single config, single scheduler entry, single status/TUI, and single set of
-logs**. Both providers are enabled by default; you can disable either one with
-`claude-warmup provider opencode disable` (or `claude`).
+logs**. Claude Code is enabled by default; OpenCode Go is opt-in (enable it
+with `claude-warmup provider opencode enable`). You can disable either one
+with `claude-warmup provider opencode disable` (or `claude`).
 
 - **Claude Code** — the original. Smart-mode probes Claude's `/usage` and
   arms the 5h session + weekly quota as you would expect.

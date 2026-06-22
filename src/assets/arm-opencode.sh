@@ -33,14 +33,15 @@ log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG" >
 "$TMUX_BIN" kill-session -t "$SESSION" 2>/dev/null || true
 log "START opencode (model=$MODEL workdir=$WORKDIR)"
 
+# `opencode run` is non-interactive — it takes the prompt as a positional
+# argument and runs to completion. (The legacy send-keys pattern was a no-op
+# because `opencode run` never presents an interactive prompt; the arm would
+# always end in WARN: no reply detected.) READY_WAIT is no longer used; the
+# variable stays defined so a stale WARMUP_READY_WAIT in the user's env doesn't
+# surprise the script.
 "$TMUX_BIN" new-session -d -s "$SESSION" -x 220 -y 50 -c "$WORKDIR" \
-  "$WARMUP_BIN" run --model "$MODEL" --format json --title "claude-warmup-arm"
+  "$WARMUP_BIN" run --model "$MODEL" --format json --title "claude-warmup-arm" "$PROMPT"
 
-sleep "$READY_WAIT"
-
-"$TMUX_BIN" send-keys -t "$SESSION" -l "$PROMPT"
-sleep 1
-"$TMUX_BIN" send-keys -t "$SESSION" Enter
 sleep "$RESPONSE_WAIT"
 
 PANE="$LOG_DIR/pane-$(date '+%Y%m%d-%H%M%S').txt"

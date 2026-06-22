@@ -114,7 +114,7 @@ export interface Config {
   tmuxSession: string;
 }
 
-export type DecisionAction = 'warm' | 'skip-offhours' | 'skip-weekly' | 'skip-active';
+type DecisionAction = 'warm' | 'skip-offhours' | 'skip-weekly' | 'skip-active';
 
 export interface Decision {
   action: DecisionAction;
@@ -122,7 +122,7 @@ export interface Decision {
 }
 
 // The decision as persisted in the usage cache (with the wall-clock instant it ran).
-export interface CachedDecision extends Decision {
+interface CachedDecision extends Decision {
   at: string;
 }
 
@@ -154,14 +154,14 @@ export interface UsageView {
   lastDecision?: CachedDecision;
 }
 
-export interface LaunchdStatus {
+interface LaunchdStatus {
   installed: boolean;
   loaded: boolean;
   running: boolean;
   enabled: boolean;
 }
 
-export interface CronStatus {
+interface CronStatus {
   installed: boolean;
 }
 

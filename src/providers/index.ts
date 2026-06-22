@@ -22,11 +22,3 @@ export function getProvider(id: ProviderId): Provider {
 // Ordered list of all known providers (used by config migration to seed the
 // default `WARMUP_PROVIDERS` list when the user has none).
 export const ALL_PROVIDER_IDS: readonly ProviderId[] = ['claude', 'opencode'];
-
-export function listProviderIds(): ProviderId[] {
-  return [...ALL_PROVIDER_IDS];
-}
-
-export function listAllProviders(): Provider[] {
-  return ALL_PROVIDER_IDS.map((id) => REGISTRY[id]);
-}

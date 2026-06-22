@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isSea, getAsset } from 'node:sea';
-import { ARM_SCRIPT, ARM_SCRIPT_SRC } from './paths.js';
+import { ARM_SCRIPT } from './paths.js';
 import { getProvider } from './providers/index.js';
 import type { ProviderId } from './types.js';
 
@@ -28,9 +28,4 @@ export function ensureArmScript(id: ProviderId): string {
   fs.writeFileSync(dest, content);
   fs.chmodSync(dest, 0o755);
   return dest;
-}
-
-// True if the source-tree path is reachable. Useful for tests / debug prints.
-export function sourceScriptPath(id: ProviderId): string {
-  return ARM_SCRIPT_SRC(id);
 }

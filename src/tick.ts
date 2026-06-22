@@ -30,7 +30,7 @@ import type {
   UsageCache,
 } from './types.js';
 
-export interface ProviderTickResult {
+interface ProviderTickResult {
   id: ProviderId;
   decision: import('./types.js').Decision;
   status: number;

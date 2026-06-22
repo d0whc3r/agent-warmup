@@ -106,10 +106,6 @@ export function disable(): boolean {
   return launchctl(['disable', `${GUI_DOMAIN}/${LABEL}`]).status === 0;
 }
 
-export function runNow(): boolean {
-  return launchctl(['kickstart', '-k', `${GUI_DOMAIN}/${LABEL}`]).status === 0;
-}
-
 export function status(): {
   installed: boolean;
   loaded: boolean;

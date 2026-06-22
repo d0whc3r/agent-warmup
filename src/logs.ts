@@ -9,7 +9,7 @@ import { LOG_DIR, WARMUP_LOG, CRON_LOG } from './paths.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Retention in days. Env-overridable so the arm script and the CLI agree on one knob.
-export const RETENTION_DAYS = Number(process.env.WARMUP_LOG_RETENTION_DAYS) || 14;
+const RETENTION_DAYS = Number(process.env.WARMUP_LOG_RETENTION_DAYS) || 14;
 
 // Rolling logs are trimmed line-by-line by their [yyyy-MM-dd HH:mm:ss] prefix.
 const ROLLING_LOGS = [

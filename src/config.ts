@@ -40,7 +40,7 @@ const IS_DARWIN = process.platform === 'darwin';
 export const SCHEDULERS: readonly Scheduler[] = IS_DARWIN ? ['launchd', 'cron'] : ['cron'];
 export const MODES: readonly Mode[] = ['smart', 'fixed'];
 export const TICK_CHOICES: readonly number[] = [5, 10, 15, 20, 30, 60]; // allowed smart-mode tick cadences (minutes)
-export const PROVIDER_IDS: readonly ProviderId[] = ALL_PROVIDER_IDS;
+const PROVIDER_IDS: readonly ProviderId[] = ALL_PROVIDER_IDS;
 
 export const DEFAULT_SMART: SmartConfig = {
   workStart: 8,
@@ -88,12 +88,12 @@ function defaultProviderConfig(id: ProviderId): ProviderConfig {
   };
 }
 
-export const DEFAULT_PROVIDERS: Record<ProviderId, ProviderConfig> = {
+const DEFAULT_PROVIDERS: Record<ProviderId, ProviderConfig> = {
   claude: defaultProviderConfig('claude'),
   opencode: defaultProviderConfig('opencode'),
 };
 
-export const DEFAULT_SHARED: SharedConfig = {
+const DEFAULT_SHARED: SharedConfig = {
   mode: 'smart',
   scheduler: SCHEDULERS[0],
   tickMinutes: DEFAULT_SMART.tickMinutes,
@@ -105,7 +105,10 @@ export const DEFAULT_MULTI: MultiConfig = {
   shared: { ...DEFAULT_SHARED },
   providers: {
     claude: { ...DEFAULT_PROVIDERS.claude },
-    opencode: { ...DEFAULT_PROVIDERS.opencode, enabled: true },
+    // opencode is opt-in: a fresh install should not silently start probing
+    // and arming a second provider the user hasn't asked for. The user enables
+    // it explicitly with `claude-warmup provider opencode enable`.
+    opencode: { ...DEFAULT_PROVIDERS.opencode, enabled: false },
   },
 };
 
@@ -541,15 +544,13 @@ function serializeLegacy(cfg: Config): string {
 }
 
 function cloneDefault(): MultiConfig {
+  // Must match DEFAULT_MULTI: opencode is opt-in (enabled: false) so a fresh
+  // install never silently starts probing a second provider.
   return {
     shared: { ...DEFAULT_SHARED },
     providers: {
       claude: { ...DEFAULT_PROVIDERS.claude },
-      opencode: { ...DEFAULT_PROVIDERS.opencode, enabled: true },
+      opencode: { ...DEFAULT_PROVIDERS.opencode, enabled: false },
     },
   };
 }
-
-// Re-export so test/config.test.ts (which imports the legacy parseConfig/serializeConfig)
-// and the rest of the codebase share a single canonical ConfigInput type.
-export type { ConfigInput, ProviderInput, MultiConfig, ProviderConfig, ProviderId, Config };

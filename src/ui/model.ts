@@ -24,7 +24,7 @@ export const LABEL_W = 13;
 export const MOVE_HINT = '↑/↓ move';
 
 // The kind of interaction a focusable row supports.
-export type RowType = 'choice' | 'text' | 'schedule' | 'action';
+type RowType = 'choice' | 'text' | 'schedule' | 'action';
 
 export interface Row {
   key: string;

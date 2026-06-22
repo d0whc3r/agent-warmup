@@ -14,32 +14,37 @@ const SRC_DIR = IN_SEA
   : path.dirname(fileURLToPath(import.meta.url));
 
 export const HOME = os.homedir();
-export const USER = os.userInfo().username;
-export const UID = os.userInfo().uid;
+const USER = os.userInfo().username;
+const UID = os.userInfo().uid;
 
 // Repo root (package dir), so paths work wherever the project lives.
-export const REPO_ROOT = path.resolve(SRC_DIR, '..');
+const REPO_ROOT = path.resolve(SRC_DIR, '..');
 
 // Single home for everything the warmup owns — logs, config, cache and the tmux
 // workdir all live here, so the footprint is one self-contained, age-managed dir.
-export const WARMUP_HOME = process.env.WARMUP_HOME || path.join(HOME, '.claude', 'warmup');
+const WARMUP_HOME = process.env.WARMUP_HOME || path.join(HOME, '.claude', 'warmup');
 
 // The CLI entry node is currently executing: the bundled bin (dist/claude-warmup.mjs)
 // when installed, or src/cli.js under tsx / the global shim in dev. Resolved to an
 // absolute path so the scheduler can re-invoke `… tick` regardless of launchd/cron's
 // working directory. (argv[1] is the real entry whatever its filename; the fallback
 // only matters in the degenerate case of no script entry.)
-export const CLI_ENTRY = path.resolve(process.argv[1] ?? path.join(SRC_DIR, 'cli.js'));
+const CLI_ENTRY = path.resolve(process.argv[1] ?? path.join(SRC_DIR, 'cli.js'));
 // The node binary running this process — embedded in the smart-mode plist/cron so
 // the scheduler can invoke the tick without relying on a login PATH.
-export const NODE_BIN = process.execPath;
+const NODE_BIN = process.execPath;
 // How a scheduler entry re-invokes this CLI headlessly: `node <entry> …` in dev/npm,
 // or just the executable itself when packaged (it is its own entry point).
 export const SELF_INVOCATION = IN_SEA ? [process.execPath] : [NODE_BIN, CLI_ENTRY];
 
-// Backward-compat: the legacy /usage probe in claude.ts still references
-// CLAUDE_BIN by name. New code uses provider config (multi.providers.claude.binary).
-export const CLAUDE_BIN = process.env.CLAUDE_BIN || path.join(HOME, '.local', 'bin', 'claude');
+// Tiny `~` expander for paths the user wrote in the env ("~/.local/bin/claude").
+// Doesn't go through $HOME-aware expansion because the env files are edited by hand
+// and we want the literal value the user picked. Used by the probes + the runner
+// so per-provider binary paths honor the same shorthand everywhere.
+export function expandHome(p: string): string {
+  if (p === '~' || p.startsWith('~/')) return os.homedir() + p.slice(1);
+  return p;
+}
 
 // tmux lives in different prefixes per platform (Homebrew on macOS, /usr/bin on most
 // Linux). Pick the first that exists so the probe's accessSync() guard gets an absolute
@@ -66,7 +71,7 @@ export const WARMUP_WORKDIR = process.env.WARMUP_WORKDIR || path.join(WARMUP_HOM
 // Per-provider arm scripts (one per provider; the registry decides which get
 // materialized). Source path is where the script ships in the source tree;
 // runtime path is where it lands under WARMUP_HOME for SEA / npm installs.
-export const ASSETS_DIR = path.join(REPO_ROOT, 'src', 'assets');
+const ASSETS_DIR = path.join(REPO_ROOT, 'src', 'assets');
 export const ARM_SCRIPT_SRC = (id: ProviderId): string => path.join(ASSETS_DIR, `arm-${id}.sh`);
 export const ARM_SCRIPT = (id: ProviderId): string =>
   process.env[`WARMUP_${id.toUpperCase()}_SCRIPT`] ||
