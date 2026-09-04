@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// claude-warmup CLI. With no subcommand it opens the Ink TUI; otherwise it runs
+// agent-warmup CLI. With no subcommand it opens the Ink TUI; otherwise it runs
 // a headless action so it stays scriptable.
 import { loadConfig, saveConfig, MODELS, SCHEDULERS, MODES, getView } from './config.js';
 import * as schedule from './schedule.js';
@@ -8,12 +8,10 @@ import { runNow, viewLogs } from './runner.js';
 import { getStatus } from './status.js';
 import { runTick, readCache, writeCache } from './tick.js';
 import { formatUsage } from './providers/claude.js';
-import { probe as claudeProbe } from './providers/claude.js';
-import { probe as opencodeProbe } from './providers/opencode.js';
 import { printStatus } from './print-status.js';
 import { LABEL, PLIST_PATH, WARMUP_LOG, CONFIG_PATH, USAGE_CACHE } from './paths.js';
 import type { Config, ProviderId, ProviderInput, UiAction } from './types.js';
-import { ALL_PROVIDER_IDS } from './providers/index.js';
+import { ALL_PROVIDER_IDS, getProvider } from './providers/index.js';
 
 const argv = process.argv.slice(2);
 const cmd: string | undefined = argv[0];
@@ -68,29 +66,28 @@ function requireChoice<T extends string>(
 }
 
 function help(): void {
-  console.log(`claude-warmup — keep Claude Code + OpenCode usage windows warm on a schedule
+  console.log(`agent-warmup — align coding-agent quota windows with your working hours
 
 Usage:
-  claude-warmup                    Open the interactive TUI
-  claude-warmup status             Show current status (per-provider)
-  claude-warmup usage [--provider ID]  Probe the current quota and print limits
-  claude-warmup tick [--dry-run] [--provider ID]  Run one decision (probe → decide → maybe arm)
-  claude-warmup run [--provider ID]  Run a warmup right now (foreground)
-  claude-warmup start              Install + load the active scheduler
-  claude-warmup stop               Remove both schedulers
-  claude-warmup restart            Reload the active scheduler
-  claude-warmup enable             Enable the launchd agent
-  claude-warmup disable            Disable the launchd agent (kept installed)
-  claude-warmup mode NAME          Set mode (${MODES.join(' | ')})
-  claude-warmup schedule H ...     Set fixed-mode hours on the selected provider
-  claude-warmup model NAME         Set model on the selected provider
-  claude-warmup scheduler NAME     Choose scheduler (${SCHEDULERS.join(' | ')})
-  claude-warmup provider list      Show enabled providers and their on/off
-  claude-warmup provider ID enable|disable  Toggle a provider
-  claude-warmup provider ID model NAME  Set a provider's warmup model
-  claude-warmup provider ID schedule H ...  Set a provider's fixed-mode hours
-  claude-warmup logs [-f]          Show recent warmup logs (-f to follow)
-  claude-warmup help               Show this help
+  agent-warmup                    Open the interactive TUI
+  agent-warmup status             Show current status (per-provider)
+  agent-warmup usage [--provider ID]  Probe or estimate current limits
+  agent-warmup tick [--dry-run] [--provider ID]  Decide and maybe warm
+  agent-warmup run [--provider ID]  Run a warmup right now (foreground)
+  agent-warmup start|stop|restart Manage the active scheduler
+  agent-warmup mode NAME          Set mode (${MODES.join(' | ')})
+  agent-warmup schedule H ...     Set fixed-mode hours on the selected provider
+  agent-warmup model NAME         Set model on the selected provider
+  agent-warmup scheduler NAME     Choose scheduler (${SCHEDULERS.join(' | ')})
+  agent-warmup provider list      Show all built-in providers
+  agent-warmup provider ID enable|disable|select
+  agent-warmup provider ID model NAME
+  agent-warmup provider ID binary PATH
+  agent-warmup provider ID schedule H ...
+  agent-warmup logs [-f]          Show recent warmup logs (-f to follow)
+  agent-warmup help               Show this help
+
+The legacy command name \`claude-warmup\` remains an alias.
 
 Files:
   config   ${CONFIG_PATH}
@@ -154,13 +151,11 @@ switch (cmd) {
     }
     process.stderr.write(`probing ${id} (${provider.model})…\n`);
     const ctx = { cfg: provider, shared: multi.shared, now: new Date() };
-    const usage = id === 'opencode' ? opencodeProbe(ctx) : claudeProbe(ctx);
-    if (!usage) {
-      console.error(`✗ could not read usage for ${id} (binary on PATH? tmux installed?)`);
-      process.exit(1);
-    }
+    const adapter = getProvider(id);
+    const live = (adapter.probe as (c: typeof ctx) => import('./types.js').ProviderUsage | null)(ctx);
     const cache = readCache();
     cache.providers = cache.providers ?? {};
+    const usage = live ?? adapter.inferFromCache(ctx, cache.providers[id] ?? null);
     cache.providers[id] = {
       ...cache.providers[id],
       capturedAt: usage.capturedAt,
@@ -176,6 +171,7 @@ switch (cmd) {
     }
     if (usage.weekSonnet && Number.isFinite(usage.weekSonnet.pct))
       console.log(`sonnet   ${usage.weekSonnet.pct}%`);
+    if (!live) console.log(`source   estimated from local warmup history (${adapter.name})`);
     break;
   }
   case 'tick': {
@@ -238,17 +234,13 @@ switch (cmd) {
   case 'model': {
     const model = rest[0];
     if (!model) {
-      console.error('Usage: claude-warmup model <name>');
+      console.error('Usage: agent-warmup model <name>');
       process.exit(1);
     }
-    // The claude provider is constrained to {haiku, sonnet, opus}; opencode
-    // (and any future provider) takes arbitrary model names. Validate only when
-    // the selected provider is claude so an opencode user can run the same
-    // `model <name>` subcommand with provider-specific ids.
     const selId = loadConfig().shared.selectedProvider;
     if (selId === 'claude' && !(MODELS as readonly string[]).includes(model)) {
       console.error(
-        `model must be one of: ${MODELS.join(', ')} (or \`provider opencode enable\` and \`provider opencode model <name>\` for arbitrary names)`,
+        `model must be one of: ${MODELS.join(', ')} (other providers accept their own model ids)`,
       );
       process.exit(1);
     }
@@ -291,7 +283,10 @@ function handleProvider(rest: string[]): void {
       if (!p) continue;
       const mark = p.enabled ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
       const sel = pid === multi.shared.selectedProvider ? ' (selected)' : '';
-      console.log(`${mark} ${pid.padEnd(9)} enabled=${p.enabled}  model=${p.model}${sel}`);
+      const adapter = getProvider(pid);
+      console.log(
+        `${mark} ${pid.padEnd(9)} ${adapter.name.padEnd(23)} enabled=${p.enabled}  usage=${adapter.probeKind}  model=${p.model}${sel}`,
+      );
     }
     return;
   }
@@ -326,10 +321,19 @@ function handleProvider(rest: string[]): void {
       void next;
       break;
     }
+    case 'select': {
+      if (!provider.enabled) {
+        console.error(`✗ provider ${pid} is disabled; enable it before selecting it`);
+        process.exit(1);
+      }
+      saveConfig({ ...multi, shared: { ...multi.shared, selectedProvider: pid } });
+      console.log(`✓ selected provider → ${pid}`);
+      break;
+    }
     case 'model': {
       const model = args[0];
       if (!model) {
-        console.error('Usage: claude-warmup provider <id> model <name>');
+        console.error('Usage: agent-warmup provider <id> model <name>');
         process.exit(1);
       }
       const patch: ProviderInput = { model };
@@ -339,6 +343,19 @@ function handleProvider(rest: string[]): void {
       });
       console.log(`✓ ${pid} model → ${model}${reapplyIfActive() ? ' (applied)' : ''}`);
       void next;
+      break;
+    }
+    case 'binary': {
+      const binary = args[0];
+      if (!binary) {
+        console.error('Usage: agent-warmup provider <id> binary <path>');
+        process.exit(1);
+      }
+      saveConfig({
+        ...multi,
+        providers: { ...multi.providers, [pid]: { ...provider, binary } },
+      });
+      console.log(`✓ ${pid} binary → ${binary}${reapplyIfActive() ? ' (applied)' : ''}`);
       break;
     }
     case 'schedule': {
@@ -359,7 +376,7 @@ function handleProvider(rest: string[]): void {
     default:
       console.error(`Unknown provider subcommand: ${action}`);
       console.error(
-        'Usage: claude-warmup provider [list | <id> enable|disable|model <name>|schedule H ...]',
+        'Usage: agent-warmup provider [list | <id> enable|disable|select|model <name>|binary <path>|schedule H ...]',
       );
       process.exit(1);
   }

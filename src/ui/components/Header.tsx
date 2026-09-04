@@ -12,7 +12,7 @@ export function Header({ config, status }: { config: MultiConfig; status: Status
     <Box flexDirection="column">
       <Box justifyContent="space-between">
         <Text bold color="cyan">
-          claude-warmup
+          agent-warmup
           {config.shared.providers.length > 1
             ? ` (${config.shared.providers.length} providers)`
             : ''}

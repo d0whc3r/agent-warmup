@@ -121,7 +121,7 @@ function frameOf(config: MultiConfig, status: Status, screenReader: boolean, col
 
 test('visual mode conveys state without relying on colour', () => {
   const f = frameOf(baseConfig, baseStatus, false);
-  assert.match(f, /claude-warmup/);
+  assert.match(f, /agent-warmup/);
   assert.match(f, /● ACTIVE/);
   assert.match(f, /▶ Mode/);
   assert.match(f, /\[08\]/);

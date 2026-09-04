@@ -1,10 +1,14 @@
 {
-  "name": "claude-warmup",
+  "name": "agent-warmup",
   "version": "1.0.0",
-  "description": "Keep Claude Code's usage window warm on a schedule (launchd/cron), managed from your terminal.",
+  "description": "Align AI coding-agent usage windows with your working hours from one terminal scheduler.",
   "keywords": [
     "claude",
     "claude-code",
+    "codex",
+    "glm",
+    "kimi",
+    "minimax",
     "cli",
     "cron",
     "launchd",
@@ -25,11 +29,14 @@
     "url": "git+https://github.com/d0whc3r/claude-warmup.git"
   },
   "bin": {
-    "claude-warmup": "dist/claude-warmup.mjs"
+    "agent-warmup": "dist/agent-warmup.mjs",
+    "claude-warmup": "dist/agent-warmup.mjs"
   },
   "files": [
     "dist",
     "src/assets/arm-claude.sh",
+    "src/assets/arm-codex.sh",
+    "src/assets/arm-kimi.sh",
     "src/assets/arm-opencode.sh"
   ],
   "os": [

@@ -3,12 +3,13 @@
 // the shell script that does the arming. Everything else (config file, scheduler,
 // logs, TUI) is shared and lives outside this module.
 //
-// The interface is intentionally narrow — five methods — so swapping a provider
-// in a test (a fake "always-arms" or "never-arms" provider) is one line. The
+// The interface stays declarative so swapping a provider in a test (a fake
+// "always-arms" or "never-arms" provider) remains straightforward. The
 // `extra` field on ProviderConfig is the seam for provider-specific knobs that
 // don't fit the common shape.
 import type {
   Decision,
+  ProviderCache,
   ProviderConfig,
   ProviderId,
   ProviderUsage,
@@ -26,9 +27,15 @@ export interface ProbeContext {
 
 export interface Provider {
   readonly id: ProviderId;
+  readonly name: string;
+  readonly modelChoices: readonly string[];
+  readonly probeKind: 'live' | 'estimated';
   // Read the provider's current usage. Returns null on transient failure — the
   // caller falls back to inferFromCache. Pure text in / structured out.
   probe(ctx: ProbeContext): Promise<ProviderUsage | null> | ProviderUsage | null;
+  // Produce the provider's best estimate when no live quota endpoint exists or
+  // a probe fails. Most subscription plans use the last successful arm time.
+  inferFromCache(ctx: ProbeContext, cache: ProviderCache | null): ProviderUsage;
   // Pure decision: given (usage, config, now), decide warm or skip (and why).
   // No I/O. The four behaviors must remain fully unit-testable without tmux/launchd.
   decide(ctx: ProbeContext, usage: ProviderUsage | null): Decision;
@@ -38,8 +45,18 @@ export interface Provider {
   // Where the script gets materialized for this provider. The provider can read
   // its `binary`, `model`, `tmuxSession` from `cfg` to influence env vars.
   armScriptPath(ctx: ProbeContext): string;
+  // Provider-specific variables consumed by the arm script. Credentials remain
+  // in each CLI's own auth store; this only selects the binary and display name.
+  armEnv(ctx: ProbeContext): NodeJS.ProcessEnv;
   // How this provider's arm failure is reported back to the tick for the
   // circuit-breaker / cooldown logic (see opencode's decide for the canonical
   // impl). Default: no cooldown (legacy behavior).
   onArmFailure?(ctx: ProbeContext, err: unknown): void;
+  // Optional persistent bookkeeping after an arm attempt (for example a
+  // circuit-breaker cooldown). Keeping this here avoids id checks in tick.ts.
+  recordArmResult?(
+    ctx: ProbeContext,
+    cache: ProviderCache,
+    status: number,
+  ): { cache: ProviderCache; log?: string };
 }

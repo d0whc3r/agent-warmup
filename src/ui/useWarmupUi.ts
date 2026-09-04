@@ -17,6 +17,7 @@ import { useApp, useInput, useStdout } from 'ink';
 import { loadConfig, saveConfig, getView, MODELS, SCHEDULERS, TICK_CHOICES } from '../config.js';
 import { getStatus } from '../status.js';
 import { formatUsage } from '../providers/claude.js';
+import { getProvider } from '../providers/index.js';
 import { pad2 } from '../format.js';
 import * as schedule from '../schedule.js';
 import { buildRows, hoursPerRow, MAX_WIDTH, MOVE_HINT, WIDE_AT, WIDE_MAX } from './model.js';
@@ -81,7 +82,9 @@ export function useWarmupUi({
 
   const cycleModel = (dir: number) => {
     const cur = String(view.model);
-    const next = cycle(MODELS as readonly string[], cur, dir);
+    const choices = getProvider(multi.shared.selectedProvider).modelChoices;
+    const available = choices.length ? choices : (MODELS as readonly string[]);
+    const next = cycle(available.includes(cur) ? available : [cur, ...available], cur, dir);
     const nextMulti = patchProvider(multi, multi.shared.selectedProvider, { model: next });
     const saved = saveConfig(nextMulti);
     setMulti(saved);
@@ -117,7 +120,7 @@ export function useWarmupUi({
   };
 
   const cycleProvider = () => {
-    const ids = multi.shared.providers;
+    const ids = multi.shared.providers.filter((id) => multi.providers[id]?.enabled);
     if (ids.length < 2) {
       setMessage('Only one provider enabled');
       return;

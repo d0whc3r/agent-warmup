@@ -5,12 +5,17 @@ import type { ProviderId } from '../types.js';
 import type { Provider } from './types.js';
 import { claudeProvider } from './claude.js';
 import { opencodeProvider } from './opencode.js';
+import { codexProvider, kimiProvider, minimaxProvider, zaiProvider } from './subscriptions.js';
 
 // The full set of built-in providers. New providers get added here (and only
 // here); everything else reads from `getProvider(id)` / `listProviderIds()`.
 const REGISTRY: Record<ProviderId, Provider> = {
   claude: claudeProvider,
   opencode: opencodeProvider,
+  codex: codexProvider,
+  zai: zaiProvider,
+  kimi: kimiProvider,
+  minimax: minimaxProvider,
 };
 
 export function getProvider(id: ProviderId): Provider {
@@ -21,4 +26,11 @@ export function getProvider(id: ProviderId): Provider {
 
 // Ordered list of all known providers (used by config migration to seed the
 // default `WARMUP_PROVIDERS` list when the user has none).
-export const ALL_PROVIDER_IDS: readonly ProviderId[] = ['claude', 'opencode'];
+export const ALL_PROVIDER_IDS: readonly ProviderId[] = [
+  'claude',
+  'codex',
+  'zai',
+  'kimi',
+  'opencode',
+  'minimax',
+];

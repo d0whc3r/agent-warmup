@@ -25,5 +25,5 @@ labels: bug
 
 **Logs**
 
-<!-- Paste `claude-warmup status` and relevant lines from
+<!-- Paste `agent-warmup status` and relevant lines from
      ~/.claude/warmup-logs/warmup.log. Redact anything sensitive. -->

@@ -184,8 +184,13 @@ function armScript(): string {
 
 export const claudeProvider: Provider = {
   id: 'claude',
+  name: 'Claude Code',
+  modelChoices: ['haiku', 'sonnet', 'opus'],
+  probeKind: 'live',
   probe,
+  inferFromCache: (ctx, cache) => inferFromCache(ctx.now, cache),
   decide,
   armScript,
   armScriptPath: () => ARM_SCRIPT('claude'),
+  armEnv: (ctx) => ({ CLAUDE_BIN: ctx.cfg.binary, WARMUP_PROVIDER_NAME: 'Claude Code' }),
 };

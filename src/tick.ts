@@ -15,13 +15,9 @@ import { runNow } from './runner.js';
 import { appendLog, pruneLogs } from './logs.js';
 import { USAGE_CACHE } from './paths.js';
 import { loadConfig } from './config.js';
-import { inferFromCache as claudeInferFromCache } from './providers/claude.js';
-import {
-  onArmFailure as ocOnArmFailure,
-  clearCooldown as ocClearCooldown,
-} from './providers/opencode.js';
 import { getProvider } from './providers/index.js';
 import type {
+  Decision,
   MultiConfig,
   ProviderCache,
   ProviderConfig,
@@ -29,6 +25,7 @@ import type {
   ProviderUsage,
   UsageCache,
 } from './types.js';
+import type { ProbeContext, Provider } from './providers/types.js';
 
 interface ProviderTickResult {
   id: ProviderId;
@@ -92,7 +89,8 @@ export function runTick({
     : multi.shared.providers.filter((id) => multi.providers[id]?.enabled);
 
   for (const id of providers) {
-    const providerCfg = multi.providers[id];
+  const providerCfg = multi.providers[id];
+    if (!providerCfg) continue;
     const providerCache = cache.providers[id] ?? {};
     const result = tickOne({
       id,
@@ -145,9 +143,7 @@ function tickOne({
   } catch {
     usage = null;
   }
-  if (!usage) {
-    usage = claudeInferFromCache(now, providerCache);
-  }
+  if (!usage) usage = provider.inferFromCache(ctx, providerCache);
   // Inject the per-provider cache signals decide() needs: lastWarmAt and the
   // opencode cooldown stamp. This is the bridge between the cache layer and
   // the provider's pure decide() function.
@@ -156,7 +152,7 @@ function tickOne({
     ...(providerCache.lastWarmAt ? { lastWarmAt: providerCache.lastWarmAt } : {}),
     ...(providerCache.cooldownUntil ? { cooldownUntil: providerCache.cooldownUntil } : {}),
   };
-  const decision = provider.decide(ctx, enriched);
+  const decision = decideForMode(provider, ctx, enriched);
 
   // Persist the decision + whatever we learned, regardless of whether we arm.
   const next: ProviderCache = {
@@ -174,21 +170,12 @@ function tickOne({
   let status = 0;
   if (decision.action === 'warm' && !dryRun) {
     status = runNow(id);
-    if (status === 0) {
-      // Successful arm: stamp the warm time and clear any cooldown.
+    if (provider.recordArmResult) {
+      const recorded = provider.recordArmResult(ctx, next, status);
+      Object.assign(next, recorded.cache);
+      if (recorded.log) appendLog(now, `TICK [${id}] ${recorded.log}`);
+    } else if (status === 0) {
       next.lastWarmAt = now.getTime();
-      if (id === 'opencode') {
-        const cleared = ocClearCooldown(next);
-        Object.assign(next, cleared);
-      }
-    } else if (id === 'opencode') {
-      // Failed arm: the opencode provider's circuit breaker escalates after
-      // 2 failures within 30 min. Other providers no-op.
-      const { next: nextCache, escalated } = ocOnArmFailure(next, now.getTime());
-      Object.assign(next, nextCache);
-      if (escalated) {
-        appendLog(now, `TICK [${id}] cooldown set (1h after 2 failures in 30m)`);
-      }
     }
   }
   writeCache(cache);
@@ -200,4 +187,16 @@ function tickOne({
   );
 
   return { id, decision, status, usage, probed };
+}
+
+export function decideForMode(
+  provider: Provider,
+  ctx: ProbeContext,
+  usage: ProviderUsage | null,
+): Decision {
+  if (ctx.shared.mode === 'smart') return provider.decide(ctx, usage);
+  const hour = ctx.now.getHours();
+  return ctx.cfg.schedule.includes(hour)
+    ? { action: 'warm', reason: `scheduled for ${String(hour).padStart(2, '0')}:00` }
+    : { action: 'skip-schedule', reason: 'not scheduled at this hour' };
 }

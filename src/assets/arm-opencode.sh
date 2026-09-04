@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 #
-# claude-warmup/arm-opencode.sh -- arms OpenCode Go's 5h usage window by launching
-# a real interactive session inside tmux, sending a trivial prompt, and exiting.
-# The "arming" request is the same shape as Claude's: a small request at the
-# start of the window keeps the 5h rolling cap fresh. On Go the cost is
-# negligible (~$0.0004 with the cheapest model, opencode-go/deepseek-v4-flash).
+# agent-warmup OpenCode runner. It is shared by OpenCode Go, Z.AI Coding Plan
+# and MiniMax Token Plan; OpenCode's own credential store selects the account.
 set -euo pipefail
 
 # Robust minimal PATH (launchd/cron start with a bare PATH).
@@ -12,14 +9,12 @@ export PATH="$HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bi
 
 OPENCODE_BIN="${OPENCODE_BIN:-$HOME/.opencode/bin/opencode}"
 WARMUP_BIN="${WARMUP_BIN:-$OPENCODE_BIN}"
-TMUX_BIN="${TMUX_BIN:-$(command -v tmux || echo /opt/homebrew/bin/tmux)}"
 MODEL="${WARMUP_MODEL:-opencode-go/deepseek-v4-flash}"
 PROMPT="${WARMUP_PROMPT:-reply with only the word: ok}"
-WARMUP_HOME="${WARMUP_HOME:-$HOME/.claude/warmup}"
+PROVIDER="${WARMUP_PROVIDER:-opencode}"
+PROVIDER_NAME="${WARMUP_PROVIDER_NAME:-OpenCode Go}"
+WARMUP_HOME="${WARMUP_HOME:-$HOME/.agent-warmup}"
 WORKDIR="${WARMUP_WORKDIR:-$WARMUP_HOME/workdir}"
-SESSION="${WARMUP_TMUX_SESSION:-opencode-warmup}"
-READY_WAIT="${WARMUP_READY_WAIT:-10}"
-RESPONSE_WAIT="${WARMUP_RESPONSE_WAIT:-25}"
 LOG_DIR="${WARMUP_LOG_DIR:-$WARMUP_HOME/logs}"
 RETENTION_DAYS="${WARMUP_LOG_RETENTION_DAYS:-14}"
 
@@ -28,43 +23,23 @@ LOG="$LOG_DIR/warmup.log"
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG" >&2; }
 
 [ -x "$WARMUP_BIN" ] || { log "ERROR: opencode not executable at $WARMUP_BIN"; exit 1; }
-[ -x "$TMUX_BIN" ]   || { log "ERROR: tmux not executable at $TMUX_BIN"; exit 1; }
+log "START $PROVIDER (model=$MODEL workdir=$WORKDIR)"
 
-"$TMUX_BIN" kill-session -t "$SESSION" 2>/dev/null || true
-log "START opencode (model=$MODEL workdir=$WORKDIR)"
+PANE="$LOG_DIR/pane-$PROVIDER-$(date '+%Y%m%d-%H%M%S').txt"
+set +e
+(cd "$WORKDIR" && "$WARMUP_BIN" run --model "$MODEL" --format json \
+  --title "agent-warmup-$PROVIDER" "$PROMPT") > "$PANE" 2>&1
+STATUS=$?
+set -e
 
-# `opencode run` is non-interactive — it takes the prompt as a positional
-# argument and runs to completion. (The legacy send-keys pattern was a no-op
-# because `opencode run` never presents an interactive prompt; the arm would
-# always end in WARN: no reply detected.) READY_WAIT is no longer used; the
-# variable stays defined so a stale WARMUP_READY_WAIT in the user's env doesn't
-# surprise the script.
-"$TMUX_BIN" new-session -d -s "$SESSION" -x 220 -y 50 -c "$WORKDIR" \
-  "$WARMUP_BIN" run --model "$MODEL" --format json --title "claude-warmup-arm" "$PROMPT"
-
-sleep "$RESPONSE_WAIT"
-
-PANE="$LOG_DIR/pane-$(date '+%Y%m%d-%H%M%S').txt"
-"$TMUX_BIN" capture-pane -p -t "$SESSION" -S -400 > "$PANE" 2>/dev/null || true
-
-# OpenCode prints a JSON event for each message; we look for a "completed" or
-# similar marker to confirm a real request was made (which is what arms the
-# window). Falls back to "any non-empty output" if the JSON shape moves.
-if grep -qE '"type"[[:space:]]*:[[:space:]]*"(step-finish|message-end|text)"' "$PANE" 2>/dev/null \
-   || grep -qE 'completion|finished' "$PANE" 2>/dev/null; then
-  log "OK: reply received -> usage window armed (pane: $PANE)"
-  STATUS=0
+if [ "$STATUS" -eq 0 ] && [ -s "$PANE" ]; then
+  log "OK: $PROVIDER_NAME replied -> usage window armed (capture: $PANE)"
 else
-  log "WARN: no reply detected; check $PANE"
-  STATUS=2
+  [ "$STATUS" -ne 0 ] || STATUS=2
+  log "WARN: $PROVIDER_NAME warmup failed (status=$STATUS); check $PANE"
 fi
-
-"$TMUX_BIN" send-keys -t "$SESSION" -l "/exit" 2>/dev/null || true
-"$TMUX_BIN" send-keys -t "$SESSION" Enter 2>/dev/null || true
-sleep 2
-"$TMUX_BIN" kill-session -t "$SESSION" 2>/dev/null || true
 
 find "$LOG_DIR" -name 'pane-*.txt' -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
 
-log "DONE opencode (status=$STATUS)"
+log "DONE $PROVIDER (status=$STATUS)"
 exit "$STATUS"

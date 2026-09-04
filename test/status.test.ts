@@ -63,7 +63,7 @@ test('fixed mode with no scheduled hours has no next run', () => {
     nextRun(
       {
         ...base,
-        providers: { ...base.providers, claude: { ...base.providers.claude, schedule: [] } },
+        providers: { ...base.providers, claude: { ...base.providers.claude!, schedule: [] } },
       },
       at(10),
     ),

@@ -5,10 +5,9 @@ export type Mode = 'smart' | 'fixed';
 export type Model = 'haiku' | 'sonnet' | 'opus';
 export type Scheduler = 'launchd' | 'cron';
 
-// Multi-provider identity. The string literal stays in sync with the env key prefix
-// (WARMUP_<UPPER_ID>_*); if a third provider is ever added, the registry in
-// src/providers/index.ts is the single source of truth.
-export type ProviderId = 'claude' | 'opencode';
+// Multi-provider identity. The string literal stays in sync with the env key
+// prefix (WARMUP_<UPPER_ID>_*); the registry is the runtime source of truth.
+export type ProviderId = 'claude' | 'opencode' | 'codex' | 'zai' | 'kimi' | 'minimax';
 
 // A parsed /usage block (session / weekly / sonnet). `resetsAt` is a Date when freshly
 // parsed; the cache round-trip turns it into an ISO string, so consumers must coerce.
@@ -68,7 +67,7 @@ export interface SharedConfig {
 // The new top-level config doc: shared + a map of per-provider configs.
 export interface MultiConfig {
   shared: SharedConfig;
-  providers: Record<ProviderId, ProviderConfig>;
+  providers: Partial<Record<ProviderId, ProviderConfig>>;
 }
 
 // Per-provider patch input. Used by `saveConfig` and the TUI's patchProvider()
@@ -100,6 +99,10 @@ export interface ConfigInput {
   selectedProvider?: string;
   claude?: Partial<ProviderConfig>;
   opencode?: Partial<ProviderConfig>;
+  codex?: Partial<ProviderConfig>;
+  zai?: Partial<ProviderConfig>;
+  kimi?: Partial<ProviderConfig>;
+  minimax?: Partial<ProviderConfig>;
 }
 
 // The legacy "merged view" config (selected provider + shared, flattened for
@@ -114,7 +117,12 @@ export interface Config {
   tmuxSession: string;
 }
 
-type DecisionAction = 'warm' | 'skip-offhours' | 'skip-weekly' | 'skip-active';
+type DecisionAction =
+  | 'warm'
+  | 'skip-offhours'
+  | 'skip-schedule'
+  | 'skip-weekly'
+  | 'skip-active';
 
 export interface Decision {
   action: DecisionAction;
@@ -135,6 +143,7 @@ export interface ProviderCache extends Partial<ProviderUsage> {
   // decide() when two consecutive arm failures land within 30 min; cleared on
   // the next successful arm. Treated as opaque by other providers.
   cooldownUntil?: number;
+  lastFailureAt?: number;
 }
 
 // The on-disk usage cache: the last probe snapshot per provider plus per-provider
@@ -165,7 +174,7 @@ interface CronStatus {
   installed: boolean;
 }
 
-// Aggregate status across config, the two schedulers, recent logs and the usage cache.
+// Aggregate status across config, launchd/cron, recent logs and the usage cache.
 export interface Status {
   config: MultiConfig;
   view: Config; // the legacy merged view of the selected provider

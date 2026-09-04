@@ -49,68 +49,57 @@ export const DEFAULT_SMART: SmartConfig = {
   weeklyStopPercent: 90,
 };
 
-// Per-provider defaults. The values that come from the env override these; the
-// values that don't fall back here. The two providers differ in:
-//   - binary path (claude defaults to npm-global; opencode to ~/.opencode/bin)
-//   - model (claude: haiku; opencode: cheapest Go model, see spec A-6)
-//   - tmux session name (claude-warmup vs opencode-warmup)
-//   - workStart/workEnd (opencode runs a tighter band)
+// Per-provider defaults. Only Claude is enabled on upgrade/fresh install; every
+// additional subscription is explicit opt-in because each warmup spends quota.
 function defaultProviderConfig(id: ProviderId): ProviderConfig {
-  if (id === 'claude') {
-    return {
-      id: 'claude',
-      enabled: true,
-      binary: '~/.local/bin/claude',
-      model: 'haiku',
-      tmuxSession: 'claude-warmup',
-      armScriptPath: '', // resolved at runtime
-      workStart: DEFAULT_SMART.workStart,
-      workEnd: DEFAULT_SMART.workEnd,
-      weeklyStopPercent: DEFAULT_SMART.weeklyStopPercent,
-      schedule: [8, 13, 18],
-      extra: {},
-    };
-  }
-  // opencode: cheapest Go model, tighter work band (verifies the user's
-  // working hours, not the 24/7 of a long-running server).
+  const specific: Record<ProviderId, Pick<ProviderConfig, 'binary' | 'model'>> = {
+    claude: { binary: '~/.local/bin/claude', model: 'haiku' },
+    codex: { binary: '~/.local/bin/codex', model: 'gpt-5.6-luna' },
+    zai: { binary: '~/.opencode/bin/opencode', model: 'zai-coding-plan/glm-5.3-flash' },
+    kimi: { binary: '~/.kimi-code/bin/kimi', model: 'kimi-code/kimi-for-coding' },
+    opencode: {
+      binary: '~/.opencode/bin/opencode',
+      model: 'opencode-go/deepseek-v4-flash',
+    },
+    minimax: {
+      binary: '~/.opencode/bin/opencode',
+      model: 'minimax-coding-plan/MiniMax-M2.7',
+    },
+  };
   return {
-    id: 'opencode',
-    enabled: true,
-    binary: '~/.opencode/bin/opencode',
-    model: 'opencode-go/deepseek-v4-flash',
-    tmuxSession: 'opencode-warmup',
+    id,
+    enabled: id === 'claude',
+    ...specific[id],
+    tmuxSession: `${id}-warmup`,
     armScriptPath: '',
-    workStart: 7,
-    workEnd: 22,
-    weeklyStopPercent: 85,
-    schedule: [9, 14, 19],
+    workStart: DEFAULT_SMART.workStart,
+    workEnd: DEFAULT_SMART.workEnd,
+    weeklyStopPercent: id === 'claude' ? 90 : 85,
+    schedule: [8, 13, 18],
     extra: {},
   };
 }
 
-const DEFAULT_PROVIDERS: Record<ProviderId, ProviderConfig> = {
-  claude: defaultProviderConfig('claude'),
-  opencode: defaultProviderConfig('opencode'),
-};
+const DEFAULT_PROVIDERS = Object.fromEntries(
+  ALL_PROVIDER_IDS.map((id) => [id, defaultProviderConfig(id)]),
+) as Record<ProviderId, ProviderConfig>;
 
 const DEFAULT_SHARED: SharedConfig = {
   mode: 'smart',
   scheduler: SCHEDULERS[0],
   tickMinutes: DEFAULT_SMART.tickMinutes,
-  providers: ['claude', 'opencode'],
+  providers: ['claude'],
   selectedProvider: 'claude',
 };
 
 export const DEFAULT_MULTI: MultiConfig = {
   shared: { ...DEFAULT_SHARED },
   providers: {
-    claude: { ...DEFAULT_PROVIDERS.claude },
-    // opencode is opt-in: a fresh install should not silently start probing
-    // and arming a second provider the user hasn't asked for. The user enables
-    // it explicitly with `claude-warmup provider opencode enable`.
-    opencode: { ...DEFAULT_PROVIDERS.opencode, enabled: false },
+    ...Object.fromEntries(
+      ALL_PROVIDER_IDS.map((id) => [id, { ...DEFAULT_PROVIDERS[id], enabled: id === 'claude' }]),
+    ),
   },
-};
+} as MultiConfig;
 
 // Legacy default (kept for backward-compat with existing tests that construct
 // `Config` objects directly).
@@ -256,21 +245,18 @@ function _normalize(input: RawConfigInput): MultiConfig {
       pickProviderId(env.WARMUP_SELECTED_PROVIDER) ?? DEFAULT_SHARED.selectedProvider,
   };
   // ---- per-provider ----
-  const providers: Record<ProviderId, ProviderConfig> = {
-    claude: normalizeProvider('claude', env, input.legacy ?? (input as ConfigInput), input.multi),
-    opencode: normalizeProvider(
-      'opencode',
-      env,
-      input.legacy ?? (input as ConfigInput),
-      input.multi,
-    ),
-  };
+  const providers = Object.fromEntries(
+    ALL_PROVIDER_IDS.map((id) => [
+      id,
+      normalizeProvider(id, env, input.legacy ?? (input as ConfigInput), input.multi),
+    ]),
+  ) as Record<ProviderId, ProviderConfig>;
   // The shared.providers list only includes ids that are actually enabled
   // (legacy users have no opencode enabled by default).
   shared.providers = shared.providers.filter((id) => providers[id]?.enabled);
   if (shared.providers.length === 0) {
     // Safety net: a config with no enabled providers is a footgun. Fall back
-    // to enabling claude so `claude-warmup tick` still has something to do.
+    // to enabling claude so `agent-warmup tick` still has something to do.
     providers.claude.enabled = true;
     shared.providers = ['claude'];
   }
@@ -312,7 +298,9 @@ function envFromStructured(
   }
   // Per-provider inputs.
   for (const id of ALL_PROVIDER_IDS) {
-    const p = l?.[id] as ProviderInput | undefined;
+    const p =
+      (l?.[id] as ProviderInput | undefined) ??
+      (multi?.providers?.[id] as ProviderInput | undefined);
     if (!p) continue;
     const U = id.toUpperCase();
     if (p.enabled != null) env[`WARMUP_${U}_ENABLED`] = String(p.enabled);
@@ -383,7 +371,7 @@ function normalizeProvider(
     enabledRaw == null
       ? id === 'claude'
         ? true
-        : false // claude enabled by default; opencode off
+        : false
       : isOneOf(['true', 'false'], enabledRaw.toLowerCase())
         ? enabledRaw.toLowerCase() === 'true'
         : Boolean(enabledRaw);
@@ -420,7 +408,7 @@ function normalizeProvider(
     ),
     weeklyStopPercent: clampPercent(weeklyStopPercent, defaults.weeklyStopPercent),
     schedule,
-    extra: defaults.extra,
+    extra: { ...defaults.extra, ...fromStructured.extra },
   };
 }
 
@@ -496,8 +484,8 @@ function parseEnv(text: string): Record<string, string> {
 
 function serialize(multi: MultiConfig): string {
   const lines: string[] = [];
-  lines.push('# claude-warmup configuration');
-  lines.push('# Edit a value and run `claude-warmup restart` to apply. Keys are the WARMUP_*');
+  lines.push('# agent-warmup configuration');
+  lines.push('# Edit a value and run `agent-warmup restart` to apply. Keys are the WARMUP_*');
   lines.push('# environment variables the arm scripts read, so you can also `set -a; source`');
   lines.push('# this file to reproduce a run by hand.');
   lines.push('');
@@ -510,6 +498,7 @@ function serialize(multi: MultiConfig): string {
   lines.push('');
   for (const id of ALL_PROVIDER_IDS) {
     const p = multi.providers[id];
+    if (!p) continue;
     lines.push(`# ── Provider: ${id} ─${'─'.repeat(Math.max(0, 50 - id.length))}`);
     lines.push(`WARMUP_${id.toUpperCase()}_ENABLED=${p.enabled}`);
     lines.push(`WARMUP_${id.toUpperCase()}_BIN=${p.binary}`);
@@ -544,13 +533,10 @@ function serializeLegacy(cfg: Config): string {
 }
 
 function cloneDefault(): MultiConfig {
-  // Must match DEFAULT_MULTI: opencode is opt-in (enabled: false) so a fresh
-  // install never silently starts probing a second provider.
   return {
     shared: { ...DEFAULT_SHARED },
-    providers: {
-      claude: { ...DEFAULT_PROVIDERS.claude },
-      opencode: { ...DEFAULT_PROVIDERS.opencode, enabled: false },
-    },
+    providers: Object.fromEntries(
+      ALL_PROVIDER_IDS.map((id) => [id, { ...DEFAULT_PROVIDERS[id], enabled: id === 'claude' }]),
+    ),
   };
 }

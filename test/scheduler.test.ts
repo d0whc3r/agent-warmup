@@ -111,7 +111,7 @@ test('buildBlock (smart) collapses to "0" minutes and a single hour at the edges
     ...smart,
     providers: {
       ...smart.providers,
-      claude: { ...smart.providers.claude, workStart: 8, workEnd: 9 },
+      claude: { ...smart.providers.claude!, workStart: 8, workEnd: 9 },
     },
   });
   assert.match(oneHour, /\n\*\/30 8 \* \* \* /); // single-hour band has no range

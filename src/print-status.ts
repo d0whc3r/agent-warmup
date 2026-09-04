@@ -12,7 +12,7 @@ export function printStatus(): void {
   const { config, view } = s;
   const providerIds = config.shared.providers;
   console.log(
-    `${dot(s.active)} claude-warmup  ${s.active ? 'ACTIVE' : 'inactive'}  (${view.mode} · ${view.scheduler} · ${providerIds.length} provider${providerIds.length === 1 ? '' : 's'})`,
+    `${dot(s.active)} agent-warmup  ${s.active ? 'ACTIVE' : 'inactive'}  (${view.mode} · ${view.scheduler} · ${providerIds.length} provider${providerIds.length === 1 ? '' : 's'})`,
   );
   if (view.mode === 'smart') {
     const sm = view.smart;

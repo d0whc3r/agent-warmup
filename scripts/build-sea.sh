@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 #
-# Build a single-executable (SEA) of claude-warmup for the HOST OS/arch (local builds).
+# Build a single-executable (SEA) of agent-warmup for the HOST OS/arch (local builds).
 #   1. bundle the CLI to one ESM file (tsdown)
 #   2. `node --build-sea` generates the blob and injects it into a copy of the
 #      running node binary in a single step (Node >=26; no postject)
 #   3. re-sign on macOS (the binary was modified after signing)
 #
-# Produces dist/claude-warmup. Release artifacts for every target are cross-compiled
+# Produces dist/agent-warmup. Release artifacts for every target are cross-compiled
 # from ubuntu in .github/workflows/release.yml (it overrides sea-config.json's
 # `executable`); this script is the simple native path for local dev. Windows is out
 # of scope: the warmup mechanism needs tmux + bash, which Windows lacks.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OUT="dist/claude-warmup"
+OUT="dist/agent-warmup"
 
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 if [ "$NODE_MAJOR" -lt 26 ]; then
@@ -31,7 +31,7 @@ case "$(uname -s)" in
   Darwin) codesign --sign - "$OUT" ;; # ad-hoc re-sign; the blob injection broke the signature
   Linux) : ;;                         # nothing to sign
   *)
-    echo "✗ unsupported OS: $(uname -s) (claude-warmup builds on macOS + Linux only)" >&2
+    echo "✗ unsupported OS: $(uname -s) (agent-warmup builds on macOS + Linux only)" >&2
     exit 1
     ;;
 esac

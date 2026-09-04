@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# claude-warmup/arm-claude.sh -- arms Claude Code's 5h usage window by launching a
+# agent-warmup/arm-claude.sh -- arms Claude Code's 5h usage window by launching a
 # real interactive session inside tmux (not -p), sending a trivial prompt, and
 # exiting. Reads all its config from env so the CLI can drive it headlessly.
 #
@@ -16,7 +16,7 @@ TMUX_BIN="${TMUX_BIN:-$(command -v tmux || echo /opt/homebrew/bin/tmux)}"
 WARMUP_BIN="${WARMUP_BIN:-$CLAUDE_BIN}"
 MODEL="${WARMUP_MODEL:-haiku}"
 PROMPT="${WARMUP_PROMPT:-reply with only the word: ok}"
-WARMUP_HOME="${WARMUP_HOME:-$HOME/.claude/warmup}"
+WARMUP_HOME="${WARMUP_HOME:-$HOME/.agent-warmup}"
 WORKDIR="${WARMUP_WORKDIR:-$WARMUP_HOME/workdir}"
 SESSION="${WARMUP_TMUX_SESSION:-claude-warmup}"
 READY_WAIT="${WARMUP_READY_WAIT:-10}"

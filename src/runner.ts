@@ -1,9 +1,10 @@
 // Run a provider's warmup now and read recent log output.
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { WARMUP_LOG, LOG_DIR, ARM_SCRIPT } from './paths.js';
+import { WARMUP_LOG, LOG_DIR, WARMUP_HOME } from './paths.js';
 import { loadConfig } from './config.js';
 import { ensureArmScript } from './assets.js';
+import { getProvider } from './providers/index.js';
 
 import type { ProviderId } from './types.js';
 
@@ -20,26 +21,26 @@ export function runNow(id?: ProviderId): number {
   }
   if (!provider.enabled) {
     process.stderr.write(
-      `✗ provider ${selected} is disabled (enable it in the TUI or with: claude-warmup provider ${selected} enable)\n`,
+      `✗ provider ${selected} is disabled (enable it with: agent-warmup provider ${selected} enable)\n`,
     );
     return 1;
   }
-  ensureArmScript(selected);
+  const adapter = getProvider(selected);
+  const script = ensureArmScript(selected);
   fs.mkdirSync(LOG_DIR, { recursive: true });
+  const ctx = { cfg: provider, shared: multi.shared, now: new Date() };
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     WARMUP_BIN: expandHome(provider.binary),
     WARMUP_MODEL: provider.model,
     WARMUP_TMUX_SESSION: provider.tmuxSession,
+    WARMUP_HOME,
+    ...adapter.armEnv(ctx),
   };
-  // Surface the right binary hint in the env for the opencode script too
-  // (the script's OPENCODE_BIN falls back to WARMUP_BIN, which is what we set).
-  if (selected === 'opencode') {
-    env.OPENCODE_BIN = expandHome(provider.binary);
-  } else {
-    env.CLAUDE_BIN = expandHome(provider.binary);
+  // Expand provider-supplied binary paths after the adapter has populated them.
+  for (const key of ['CLAUDE_BIN', 'CODEX_BIN', 'KIMI_BIN', 'OPENCODE_BIN']) {
+    if (env[key]) env[key] = expandHome(env[key]);
   }
-  const script = ARM_SCRIPT(selected);
   const r = spawnSync('/bin/bash', [script], { stdio: 'inherit', env });
   return r.status ?? 1;
 }

@@ -59,7 +59,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Bundle the CLI to one platform-agnostic ESM file (dist/claude-warmup.mjs).
+      # Bundle the CLI to one platform-agnostic ESM file (dist/agent-warmup.mjs).
       - name: Bundle CLI
         run: pnpm run build
 
@@ -77,7 +77,7 @@ jobs:
       - name: Build SEA (cross-compile into target runtime)
         run: |
           mkdir -p out
-          OUT="out/claude-warmup-${{ matrix.target }}"
+          OUT="out/agent-warmup-${{ matrix.target }}"
           jq --arg exe "$TARGET_NODE" --arg out "$OUT" \
             '.executable = $exe | .output = $out' sea-config.json > sea.target.json
           node --build-sea sea.target.json
@@ -91,18 +91,18 @@ jobs:
           curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${PKG}.tar.gz" -o rcodesign.tar.gz
           tar xf rcodesign.tar.gz
           RCODESIGN="$(find . -name rcodesign -type f | head -1)" # tolerate layout changes
-          "$RCODESIGN" sign "out/claude-warmup-${{ matrix.target }}"
+          "$RCODESIGN" sign "out/agent-warmup-${{ matrix.target }}"
 
       # Only the linux-x64 binary can execute on the x64 ubuntu runner; the rest are
       # foreign binaries we can only build, not run, here.
       - name: Smoke test (linux-x64)
         if: matrix.target == 'linux-x64'
-        run: ./out/claude-warmup-linux-x64 help
+        run: ./out/agent-warmup-linux-x64 help
 
       - uses: actions/upload-artifact@v4
         with:
-          name: claude-warmup-${{ matrix.target }}
-          path: out/claude-warmup-${{ matrix.target }}
+          name: agent-warmup-${{ matrix.target }}
+          path: out/agent-warmup-${{ matrix.target }}
           if-no-files-found: error
 
   release:

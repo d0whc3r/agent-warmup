@@ -10,7 +10,7 @@ const reactDevtoolsStub = fileURLToPath(new URL('./sea/stub-react-devtools.js', 
 // external — provided by the runtime. inlineDynamicImports folds the lazy import()
 // chunks back in so a single file can be the SEA entry point.
 export default defineConfig({
-  entry: { 'claude-warmup': 'src/cli.ts' },
+  entry: { 'agent-warmup': 'src/cli.ts' },
   format: 'esm',
   platform: 'node',
   target: 'node26',

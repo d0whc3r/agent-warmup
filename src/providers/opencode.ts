@@ -8,6 +8,7 @@ import { differenceInMilliseconds } from '../time.js';
 
 import type { Decision, ProviderCache, ProviderUsage } from '../types.js';
 import type { ProbeContext, Provider } from './types.js';
+import { inferWindowFromCache, recordArmWithCooldown } from './common.js';
 
 const GO_WEEKLY_USD = 30; // 30 USD per week
 const FAIL_WINDOW_MS = 30 * 60 * 1000; // 30 min
@@ -142,14 +143,28 @@ export function clearCooldown(cache: ProviderCache | null): ProviderCache {
 
 export const opencodeProvider: Provider = {
   id: 'opencode',
+  name: 'OpenCode Go',
+  modelChoices: [
+    'opencode-go/deepseek-v4-flash',
+    'opencode-go/glm-5.3-flash',
+    'opencode-go/kimi-k2.7-code',
+  ],
+  probeKind: 'live',
   probe,
+  inferFromCache: inferWindowFromCache,
   decide,
   armScript,
   armScriptPath: () => ARM_SCRIPT('opencode'),
+  armEnv: (ctx) => ({
+    OPENCODE_BIN: ctx.cfg.binary,
+    WARMUP_PROVIDER: 'opencode',
+    WARMUP_PROVIDER_NAME: 'OpenCode Go',
+  }),
   onArmFailure: (ctx, err) => {
     // The tick reads/writes the per-provider cache itself; this hook is here
     // for future in-process state (e.g. metrics) -- kept as a no-op for now.
     void ctx;
     void err;
   },
+  recordArmResult: (ctx, cache, status) => recordArmWithCooldown(cache, status, ctx.now),
 };

@@ -1,4 +1,4 @@
-// Interactive terminal UI for claude-warmup, built with Ink. Responsive: a single
+// Interactive terminal UI for agent-warmup, built with Ink. Responsive: a single
 // labelled column that reflows on narrow terminals, split into two side-by-side
 // columns on wide ones. Multi-provider: the Header shows the selected provider;
 // settings and usage are bound to it. Press 'p' in the TUI to cycle providers.

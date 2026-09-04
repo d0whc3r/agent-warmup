@@ -1,12 +1,16 @@
 {
-  "main": "dist/claude-warmup.mjs",
+  "main": "dist/agent-warmup.mjs",
   "mainFormat": "module",
-  "output": "dist/claude-warmup",
+  "output": "dist/agent-warmup",
   "disableExperimentalSEAWarning": true,
   "useCodeCache": false,
   "useSnapshot": false,
   "assets": {
-    "src/assets/arm-claude.sh": "src/assets/arm-claude.sh",
-    "src/assets/arm-opencode.sh": "src/assets/arm-opencode.sh"
+    "arm-claude.sh": "src/assets/arm-claude.sh",
+    "arm-codex.sh": "src/assets/arm-codex.sh",
+    "arm-kimi.sh": "src/assets/arm-kimi.sh",
+    "arm-opencode.sh": "src/assets/arm-opencode.sh",
+    "arm-zai.sh": "src/assets/arm-opencode.sh",
+    "arm-minimax.sh": "src/assets/arm-opencode.sh"
   }
 }

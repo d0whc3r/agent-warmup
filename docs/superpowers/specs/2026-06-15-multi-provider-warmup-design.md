@@ -1,6 +1,6 @@
 # Multi-provider warmup: claude + opencode
 
-**Status:** Draft, awaiting user review.
+**Status:** Superseded by `2026-09-04-agent-warmup-scope.md`.
 **Date:** 2026-06-15
 **Repo:** `claude-warmup` (existing)
 

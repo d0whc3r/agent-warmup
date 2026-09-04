@@ -22,9 +22,15 @@ const REPO_ROOT = path.resolve(SRC_DIR, '..');
 
 // Single home for everything the warmup owns — logs, config, cache and the tmux
 // workdir all live here, so the footprint is one self-contained, age-managed dir.
-const WARMUP_HOME = process.env.WARMUP_HOME || path.join(HOME, '.claude', 'warmup');
+const GENERIC_HOME = path.join(HOME, '.agent-warmup');
+const LEGACY_HOME = path.join(HOME, '.claude', 'warmup');
+// Existing installs keep using their old home automatically. New installs get
+// a provider-neutral location; WARMUP_HOME always wins when explicitly set.
+export const WARMUP_HOME =
+  process.env.WARMUP_HOME ||
+  (!fs.existsSync(GENERIC_HOME) && fs.existsSync(LEGACY_HOME) ? LEGACY_HOME : GENERIC_HOME);
 
-// The CLI entry node is currently executing: the bundled bin (dist/claude-warmup.mjs)
+// The CLI entry node is currently executing: the bundled bin (dist/agent-warmup.mjs)
 // when installed, or src/cli.js under tsx / the global shim in dev. Resolved to an
 // absolute path so the scheduler can re-invoke `… tick` regardless of launchd/cron's
 // working directory. (argv[1] is the real entry whatever its filename; the fallback
@@ -73,9 +79,12 @@ export const WARMUP_WORKDIR = process.env.WARMUP_WORKDIR || path.join(WARMUP_HOM
 // runtime path is where it lands under WARMUP_HOME for SEA / npm installs.
 const ASSETS_DIR = path.join(REPO_ROOT, 'src', 'assets');
 export const ARM_SCRIPT_SRC = (id: ProviderId): string => path.join(ASSETS_DIR, `arm-${id}.sh`);
-export const ARM_SCRIPT = (id: ProviderId): string =>
-  process.env[`WARMUP_${id.toUpperCase()}_SCRIPT`] ||
-  (IN_SEA ? path.join(WARMUP_HOME, `arm-${id}.sh`) : ARM_SCRIPT_SRC(id));
+export const ARM_SCRIPT = (id: ProviderId): string => {
+  const override = process.env[`WARMUP_${id.toUpperCase()}_SCRIPT`];
+  if (override) return override;
+  const source = ARM_SCRIPT_SRC(id);
+  return !IN_SEA && fs.existsSync(source) ? source : path.join(WARMUP_HOME, `arm-${id}.sh`);
+};
 
 // launchd
 export const LABEL = `com.${USER}.claude-warmup`;
@@ -90,5 +99,5 @@ export const CONFIG_PATH = path.join(WARMUP_HOME, 'warmup.env');
 
 // Backward-compat: the legacy `~/.claude/warmup/usage-cache.json` path. New code
 // reads the per-provider cache from the same file; the on-disk format is just a
-// shape change (flat → { providers: { claude, opencode } }), not a path change.
+// shape change (flat → { providers: { <id>: snapshot } }), not a path change.
 export const USAGE_CACHE = path.join(WARMUP_HOME, 'usage-cache.json');

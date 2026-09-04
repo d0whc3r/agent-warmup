@@ -14,13 +14,17 @@ import type { ProviderId } from './types.js';
 // the source path (dev/npm). Idempotent; safe to call from every arm site.
 export function ensureArmScript(id: ProviderId): string {
   const dest = ARM_SCRIPT(id);
-  if (!isSea()) return dest; // dev/npm: the file already lives at src/assets/arm-<id>.sh
+  if (!isSea() && fs.existsSync(dest)) {
+    fs.chmodSync(dest, 0o755);
+    return dest;
+  }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   // Prefer the embedded asset (so a single executable ships everything);
   // fall back to the provider's armScript() string if the asset isn't
   // registered (defensive: the asset is only injected at SEA build time).
   let content: string;
   try {
+    if (!isSea()) throw new Error('source asset is shared by another provider');
     content = getAsset(`arm-${id}.sh`, 'utf8') as string;
   } catch {
     content = getProvider(id).armScript();

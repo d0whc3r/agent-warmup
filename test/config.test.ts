@@ -70,19 +70,19 @@ test('.env.example documents every config key and shows the defaults', () => {
   assert.equal(parsed.shared.tickMinutes, DEFAULT_MULTI.shared.tickMinutes);
   assert.deepEqual(parsed.shared.providers, enabledDefaults);
   assert.equal(parsed.shared.selectedProvider, DEFAULT_MULTI.shared.selectedProvider);
-  assert.equal(parsed.providers.claude.model, DEFAULT_MULTI.providers.claude.model);
-  assert.equal(parsed.providers.claude.workStart, DEFAULT_MULTI.providers.claude.workStart);
-  assert.equal(parsed.providers.claude.workEnd, DEFAULT_MULTI.providers.claude.workEnd);
+  assert.equal(parsed.providers.claude!.model, DEFAULT_MULTI.providers.claude!.model);
+  assert.equal(parsed.providers.claude!.workStart, DEFAULT_MULTI.providers.claude!.workStart);
+  assert.equal(parsed.providers.claude!.workEnd, DEFAULT_MULTI.providers.claude!.workEnd);
   assert.equal(
-    parsed.providers.claude.weeklyStopPercent,
-    DEFAULT_MULTI.providers.claude.weeklyStopPercent,
+    parsed.providers.claude!.weeklyStopPercent,
+    DEFAULT_MULTI.providers.claude!.weeklyStopPercent,
   );
-  assert.equal(parsed.providers.opencode.model, DEFAULT_MULTI.providers.opencode.model);
-  assert.equal(parsed.providers.opencode.workStart, DEFAULT_MULTI.providers.opencode.workStart);
-  assert.equal(parsed.providers.opencode.workEnd, DEFAULT_MULTI.providers.opencode.workEnd);
+  assert.equal(parsed.providers.opencode!.model, DEFAULT_MULTI.providers.opencode!.model);
+  assert.equal(parsed.providers.opencode!.workStart, DEFAULT_MULTI.providers.opencode!.workStart);
+  assert.equal(parsed.providers.opencode!.workEnd, DEFAULT_MULTI.providers.opencode!.workEnd);
   assert.equal(
-    parsed.providers.opencode.weeklyStopPercent,
-    DEFAULT_MULTI.providers.opencode.weeklyStopPercent,
+    parsed.providers.opencode!.weeklyStopPercent,
+    DEFAULT_MULTI.providers.opencode!.weeklyStopPercent,
   );
 });
 

@@ -1,277 +1,160 @@
-# claude-warmup
+# agent-warmup
 
 [![CI](https://github.com/d0whc3r/claude-warmup/actions/workflows/ci.yml/badge.svg)](https://github.com/d0whc3r/claude-warmup/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Keeps Claude Code's session "warm" on this Mac: it launches a **real**
-interactive session (via `tmux`, not `-p`), sends a trivial prompt, and exits.
-That **starts the 5h usage-limit window** at convenient times, so the resets
-land inside your working hours.
+Prime the usage windows of several AI coding subscriptions before you work. A
+warmup is one deliberately tiny model request. For anchored five-hour windows
+this aligns the next reset with a useful time; for rolling windows it is only a
+scheduled readiness pulse and does not move the reset boundary.
 
-In the default **smart mode** it first reads Claude Code's own `/usage` (which
-costs nothing — running `/usage` sends no message) and only arms a window when
-there isn't one already running and your weekly quota allows it. So it never
-wastes a request re-arming an active window, and it backs off near the weekly
-limit. A legacy **fixed mode** (arm at set hours) is still available.
+The canonical CLI is `agent-warmup`. The old `claude-warmup` command remains an
+alias, and existing installs under `~/.claude/warmup` are detected automatically.
 
-It ships as a small CLI (`claude-warmup`) with an interactive terminal UI that
-manages the mode, schedule, model, and the scheduler (launchd or cron) for you.
+## Supported providers
 
-## Multi-provider (Claude Code + OpenCode Go)
+| ID | Service | Runner | Usage strategy | Default model |
+| --- | --- | --- | --- | --- |
+| `claude` | Claude Code | interactive Claude session in `tmux` | live `/usage` | `haiku` |
+| `codex` | OpenAI Codex | `codex exec`, ephemeral/read-only | local five-hour estimate | `gpt-5.6-luna` |
+| `zai` | Z.AI GLM Coding Plan | authenticated OpenCode provider | local five-hour estimate | `zai-coding-plan/glm-5.3-flash` |
+| `kimi` | Kimi Code | `kimi -p` | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding` |
+| `opencode` | OpenCode Go | `opencode run` + `opencode stats` | live weekly + local session estimate | `opencode-go/deepseek-v4-flash` |
+| `minimax` | MiniMax Token Plan | authenticated OpenCode provider | local five-hour estimate | `minimax-coding-plan/MiniMax-M2.7` |
 
-`claude-warmup` keeps **two independent usage windows warm from a single CLI,
-single config, single scheduler entry, single status/TUI, and single set of
-logs**. Claude Code is enabled by default; OpenCode Go is opt-in (enable it
-with `claude-warmup provider opencode enable`). You can disable either one
-with `claude-warmup provider opencode disable` (or `claude`).
+Claude is enabled by default. Every other provider is opt-in because a warmup
+consumes real quota. Codex, Z.AI, Kimi, and MiniMax currently expose no stable
+machine-readable quota endpoint suitable for unattended polling, so the CLI
+conservatively treats a successful warmup within the last five hours as an
+active window.
 
-- **Claude Code** — the original. Smart-mode probes Claude's `/usage` and
-  arms the 5h session + weekly quota as you would expect.
-- **OpenCode Go** ($5 first month / $10/month) — the 5h, weekly and monthly
-  caps in USD are tracked server-side; `claude-warmup` reads the weekly %
-  from `opencode stats --days 7` and falls back to "did we arm in the last
-  5h?" for the session-active check (opencode issue #19190 is in flight
-  for a native quota command). The default warmup model is
-  `opencode-go/deepseek-v4-flash` — the cheapest on Go (31,650 req/5h,
-  ~$0.0004 per warmup) — so the monthly budget is barely touched.
-
-Provider state lives under one `WARMUP_HOME` (default `~/.claude/warmup`),
-so logs, the usage cache, and the scheduler entry are shared. The tick
-iterates enabled providers in the order you set in `WARMUP_PROVIDERS` and
-arms each one independently; a 5h cooldown kicks in if an arm fails twice
-in 30 min (only affects Go, since Claude's cap is request-based, not
-dollar-based).
-
-CLI:
-
-```
-claude-warmup provider list                       # show on/off per provider
-claude-warmup provider opencode enable|disable   # toggle
-claude-warmup provider opencode model NAME       # override the arming model
-claude-warmup provider opencode schedule H ...   # set fixed-mode hours
-claude-warmup usage --provider opencode          # probe just one provider
-claude-warmup tick --provider claude --dry-run   # tick just one provider
-claude-warmup run --provider opencode            # run just one provider
-```
-
-In the TUI, press **`p`** to cycle the selected provider (the one whose
-settings and usage the panel shows). Configuration in `.env` is per-provider:
-`WARMUP_CLAUDE_*` and `WARMUP_OPENCODE_*`; shared knobs (`mode`, `scheduler`,
-`tickMinutes`, `selectedProvider`) live at the top level. See
-[`.env.example`](.env.example) for the full schema and
-[`docs/superpowers/specs/2026-06-15-multi-provider-warmup-design.md`](docs/superpowers/specs/2026-06-15-multi-provider-warmup-design.md)
-for the design rationale.
-
-Legacy `WARMUP_MODE` / `WARMUP_MODEL` / `WARMUP_SCHEDULE` / `WARMUP_WORK_*` keys
-are still read on first load; on the first save the file is rewritten in the
-multi-provider schema and a `warmup.env.bak` is dropped next to it for
-rollback.
+MiniMax is included because its Token Plan also has a five-hour allowance. Kimi
+is included as requested, but its official documentation calls the five-hour
+limit rolling: use it as an availability pulse, not as a way to shift a reset.
+Copilot, Gemini and Qwen are intentionally excluded because their relevant
+limits are fixed monthly/daily/weekly or genuinely sliding and no pulse was
+requested for them.
 
 ## Requirements
 
-- macOS (scheduler: launchd, with cron as a fallback) or Linux (scheduler: cron)
-- [Claude Code](https://claude.com/claude-code) CLI on your `PATH`
-- `tmux` (`brew install tmux` on macOS, `apt install tmux` / your package manager on Linux)
-- Node.js ≥ 24 and `pnpm` (running from source). Building the standalone binary needs Node ≥ 26.
+- macOS (launchd, with cron fallback) or Linux (cron)
+- Node.js 24+ and pnpm when running from source
+- The CLI for every provider you enable, already authenticated
+- `tmux` for Claude Code probing/arming; the other runners are non-interactive
 
-## Install
+For Z.AI and MiniMax, connect the corresponding Coding Plan inside OpenCode
+first (`opencode auth login`). Credentials stay in each vendor CLI's own auth
+store; `agent-warmup` never persists API keys.
 
-### Prebuilt binary (recommended)
-
-Each release attaches a self-contained single-executable (it embeds its own Node
-runtime — no Node install needed) for `darwin-arm64`, `darwin-x64`, `linux-x64`
-and `linux-arm64`. Download the one for your platform, then:
-
-```bash
-chmod +x claude-warmup-*           # make it executable
-./claude-warmup-* status           # (macOS: first run may need to clear Gatekeeper quarantine)
-```
-
-### From source
+## Install from source
 
 ```bash
 git clone https://github.com/d0whc3r/claude-warmup.git
 cd claude-warmup
-pnpm install                  # installs deps and builds dist/ (the runnable bundle)
-node dist/claude-warmup.mjs   # opens the interactive TUI
+pnpm install
+pnpm link --global
+agent-warmup status
 ```
 
-The interactive TUI is authored in JSX and must be bundled to run under plain Node;
-`pnpm install` builds it for you. To run from source without building, use
-`pnpm start` (it transpiles on the fly via tsx).
+Build with `pnpm build`. A standalone binary can be built on Node 26+ with
+`pnpm build:sea`; it is written to `dist/agent-warmup`.
 
-Build the binary yourself (Node ≥ 26): `pnpm run build:sea` → `dist/claude-warmup`.
-
-Optionally link the `claude-warmup` command globally so you can run it from
-anywhere:
+## Quick start
 
 ```bash
-pnpm link --global       # then just: claude-warmup
+# See every built-in adapter. Only Claude starts enabled.
+agent-warmup provider list
+
+# Enable the subscriptions you use.
+agent-warmup provider codex enable
+agent-warmup provider zai enable
+agent-warmup provider kimi enable
+
+# Select which provider the unqualified model/schedule commands edit.
+agent-warmup provider codex select
+agent-warmup model gpt-5.6-luna
+
+# Verify one warmup manually, then install the scheduler.
+agent-warmup run --provider codex
+agent-warmup start
 ```
 
-The rest of this README uses `claude-warmup` as the command; substitute
-`node dist/claude-warmup.mjs` if you didn't link it.
+Running `agent-warmup` with no arguments opens the Ink terminal UI. Press `p`
+to cycle through enabled providers.
 
-## Usage
+## Commands
 
-Run with no arguments to open the interactive TUI:
-
-```
-↑↓ move · ←→ change · space toggle hour · enter select · q quit
-```
-
-From there you can pick the scheduler and model, toggle the hours on the
-schedule strip, then **Save & apply**, **Run warmup now**, **Stop**, or
-**View logs**. The status bar always spells out the keys for whatever row is
-focused, and every change is echoed back, so nothing is hidden.
-
-The TUI is accessibility-first: state is conveyed by shape and text (not colour
-alone), so it stays usable under `NO_COLOR` and on monochrome terminals. For a
-screen reader, run it with `INK_SCREEN_READER=true claude-warmup` — it emits a
-clean, linear, labelled reading of the panel instead of the visual layout.
-
-Everything is also scriptable via subcommands:
-
-```
-claude-warmup                 Open the interactive TUI
-claude-warmup status          Show current status (incl. cached session/weekly usage)
-claude-warmup usage           Probe /usage now and print session + weekly limits
-claude-warmup tick [--dry-run]  Run one smart decision (probe → decide → maybe warm)
-claude-warmup run             Run a warmup right now (foreground)
-claude-warmup start           Install + load the active scheduler
-claude-warmup stop            Remove both schedulers
-claude-warmup restart         Reload the active scheduler
-claude-warmup enable          Enable the launchd agent
-claude-warmup disable         Disable the launchd agent (kept installed)
-claude-warmup mode NAME       Set mode (smart | fixed)
-claude-warmup schedule H ...  Set fixed-mode run hours, e.g. "schedule 8 13 18 23"
-claude-warmup model NAME      Set model (haiku | sonnet | opus)
-claude-warmup scheduler NAME  Choose scheduler (launchd | cron)
-claude-warmup logs [-f]       Show recent warmup logs (-f to follow)
-claude-warmup help            Show this help
+```text
+agent-warmup                         Open the interactive TUI
+agent-warmup status                  Show scheduler and provider status
+agent-warmup usage [--provider ID]   Probe usage or show the local estimate
+agent-warmup tick [--dry-run] [--provider ID]
+agent-warmup run [--provider ID]     Spend one tiny request now
+agent-warmup start|stop|restart      Manage launchd/cron
+agent-warmup mode smart|fixed
+agent-warmup scheduler launchd|cron
+agent-warmup provider list
+agent-warmup provider ID enable|disable|select
+agent-warmup provider ID model NAME
+agent-warmup provider ID binary PATH
+agent-warmup provider ID schedule H ...
+agent-warmup logs [-f]
 ```
 
-The default model is `haiku`. **Smart mode** (default) checks every 30 min from
-08:00–23:00; **fixed mode** arms at **08:00, 13:00, 18:00**, each run arming a
-fresh 5h window (08→13, 13→18, 18→23).
+## Scheduling modes
 
-> Changing `mode`, `schedule`, or the smart settings only re-installs the
-> scheduler if it's already active (or after **Save & apply** / `start`). Run
-> `claude-warmup restart` after editing the config file by hand.
+`smart` mode checks every 30 minutes inside the union of all enabled providers'
+working bands. Each provider independently skips when it is outside its band,
+over its weekly threshold, already active, or cooling down after repeated
+failures. Claude and OpenCode Go use live data where available; the other
+providers use local successful-arm history.
 
-## Smart mode
+`fixed` mode runs only at each provider's configured hours. A single launchd or
+cron entry contains the union of those hours; the tick only arms providers whose
+own schedule matches the current hour.
 
-Each tick (every `tickMinutes` within the working band) does:
+Two failed arms within 30 minutes put cache-based providers into a one-hour
+cooldown. This prevents an expired login or missing binary from being retried on
+every scheduler tick.
 
-1. **Probe** `/usage` in a throwaway `tmux` session and parse the rendered
-   limits — the 5h "Current session" and the "Current week (all models)". This
-   sends no message, so it costs nothing and arms no window.
-2. **Decide**:
-   - outside `workStart`–`workEnd` → **skip** (don't arm windows at night);
-   - weekly usage ≥ `weeklyStopPercent` → **skip** (conserve the weekly quota);
-   - a 5h window is already active → **skip** (don't waste a request);
-   - otherwise → **arm** a fresh window (this is the one real request).
-3. **Log** the decision to `warmup.log` and cache the parsed usage to
-   `~/.claude/warmup/usage-cache.json` so `status` and the TUI can show it.
+## Configuration and files
 
-Effect: windows chain to your real usage (a new one is armed within one tick of
-the previous expiring), requests aren't wasted on already-active windows, and
-warmups back off automatically as you approach the weekly limit. If a probe
-fails, the tick falls back to "did we arm in the last 5h?" so it still arms at
-most once per window.
+New installs use `~/.agent-warmup/` for `warmup.env`, the usage cache, logs and
+the sterile warmup workdir. If the legacy `~/.claude/warmup/` exists and the new
+home does not, it continues to be used. Set `WARMUP_HOME` to override either.
 
-## How it works
+Configuration is a plain `.env` file:
 
-Everything the warmup owns lives under a single home, `~/.claude/warmup/`
-(`warmup.env`, `usage-cache.json`, `logs/`, `workdir/`). The CLI persists your
-settings to `~/.claude/warmup/warmup.env` and registers
-the active scheduler (launchd `LaunchAgent` or a marked `crontab` block). In
-**fixed** mode it runs the arm script at the configured hours; in **smart** mode
-it runs `claude-warmup tick` every `tickMinutes` across the working band, and the
-tick decides whether to invoke it (see [Smart mode](#smart-mode)).
+```dotenv
+WARMUP_MODE=smart
+WARMUP_SCHEDULER=launchd
+WARMUP_TICK_MINUTES=30
+WARMUP_PROVIDERS=claude,codex,kimi
+WARMUP_SELECTED_PROVIDER=codex
 
-The actual arming is always done by `arm-claude.sh`:
-
-1. Opens `claude --safe-mode --model <model>` inside a detached `tmux` session.
-   - `--safe-mode` keeps **normal auth** (your subscription's Keychain/OAuth →
-     this is what arms the window) but disables hooks, MCP, CLAUDE.md and
-     plugins. Result: fast, cheap startup with no integration prompts.
-   - The model defaults to `haiku` (cheapest; enough to arm the window).
-2. Accepts the "trust this folder" dialog the first time.
-3. Types the prompt (`reply with only the word: ok`) and submits it.
-4. Waits for the reply, captures the pane as evidence, and closes the session.
-
-> ⚠️ Each run **consumes a real request** from your quota — that is precisely the
-> point: without a request, the window doesn't start.
-
-### Why launchd and not cron?
-
-Your Claude credentials live in the **macOS Keychain** (not in a file). A
-`LaunchAgent` runs inside your graphical session (Aqua), where the Keychain is
-unlocked, so Claude can read the auth without issues. `cron` jobs on macOS run
-in a background context where Keychain access is unreliable (and `cron` also
-needs _Full Disk Access_). That's why launchd is the robust choice here.
-
-If you switch to cron and runs fail with an auth/Keychain error, switch back to
-launchd with `claude-warmup scheduler launchd`.
-
-## Configuration
-
-Settings managed by the CLI (stored in `~/.claude/warmup/warmup.env`):
-
-| Setting                   | Default       | Values                                                                              |
-| ------------------------- | ------------- | ----------------------------------------------------------------------------------- |
-| `mode`                    | `smart`       | `smart` (probe `/usage`, arm only when needed) \| `fixed` (arm at `schedule` hours) |
-| `schedule`                | `[8, 13, 18]` | hours of the day, 0–23 (minute 0) — used in `fixed` mode                            |
-| `smart.workStart`         | `8`           | earliest hour a tick may arm a window                                               |
-| `smart.workEnd`           | `23`          | latest hour (exclusive) a tick may arm a window                                     |
-| `smart.tickMinutes`       | `30`          | how often to probe + decide (`5`\|`10`\|`15`\|`20`\|`30`\|`60`)                     |
-| `smart.weeklyStopPercent` | `90`          | skip warmups once weekly "all models" usage hits this                               |
-| `model`                   | `haiku`       | `haiku` \| `sonnet` \| `opus`                                                       |
-| `scheduler`               | `launchd`     | `launchd` \| `cron`                                                                 |
-
-`warmup.env` is a plain `.env`: each setting is a `WARMUP_*` key (`mode` →
-`WARMUP_MODE`, `smart.workStart` → `WARMUP_WORK_START`, `schedule` →
-`WARMUP_SCHEDULE` as a comma list, …). Edit it directly and run `claude-warmup
-restart` to apply. Because the keys match the variables below, you can also
-`set -a; source ~/.claude/warmup/warmup.env` to reproduce a run by hand. See
-[`.env.example`](.env.example) for a fully-commented template of every key.
-
-The arm script also reads these environment variables (all optional), useful for
-manual runs or tuning:
-
-| Variable                    | Default                        | What it does                         |
-| --------------------------- | ------------------------------ | ------------------------------------ |
-| `WARMUP_MODEL`              | `haiku`                        | Model to use                         |
-| `WARMUP_PROMPT`             | `reply with only the word: ok` | Trivial prompt                       |
-| `WARMUP_HOME`               | `~/.claude/warmup`             | Root dir for logs + workdir          |
-| `WARMUP_WORKDIR`            | `$WARMUP_HOME/workdir`         | Trusted dir the session runs in      |
-| `WARMUP_READY_WAIT`         | `10`                           | Sec. to wait for the TUI to start    |
-| `WARMUP_RESPONSE_WAIT`      | `25`                           | Sec. to wait for the reply           |
-| `WARMUP_LOG_DIR`            | `$WARMUP_HOME/logs`            | Log directory                        |
-| `WARMUP_LOG_RETENTION_DAYS` | `14`                           | Delete logs/captures older than this |
-| `WARMUP_TMUX_SESSION`       | `claude-warmup`                | tmux session name                    |
-| `CLAUDE_BIN`                | `~/.local/bin/claude`          | Path to the `claude` binary          |
-| `TMUX_BIN`                  | first `tmux` found on `PATH`   | Path to the `tmux` binary            |
-
-## Logs
-
-- Logs live in `~/.claude/warmup/logs/`: `warmup.log` (one `START`/`OK`/`DONE`
-  line per arming run plus one `TICK …` line per smart decision) and a
-  `pane-*.txt` snapshot per run. launchd also writes `launchd.out.log` /
-  `launchd.err.log`; cron writes `cron.log`.
-- **Retention is by age**: every smart tick trims the rolling logs to the last
-  `WARMUP_LOG_RETENTION_DAYS` (default 14) by line timestamp and deletes older
-  `pane-*.txt` captures. The log dir stays bounded without manual cleanup.
-- The last parsed usage snapshot is cached at `~/.claude/warmup/usage-cache.json`.
-- Follow them with `claude-warmup logs -f`.
-
-## Run by hand
-
-```bash
-claude-warmup run                       # run once in the foreground
-tail -f ~/.claude/warmup/logs/warmup.log
+WARMUP_CODEX_ENABLED=true
+WARMUP_CODEX_BIN=~/.local/bin/codex
+WARMUP_CODEX_MODEL=gpt-5.6-luna
+WARMUP_CODEX_WORK_START=8
+WARMUP_CODEX_WORK_END=23
+WARMUP_CODEX_WEEKLY_STOP_PERCENT=85
+WARMUP_CODEX_SCHEDULE=8,13,18
 ```
+
+See [`.env.example`](.env.example) for all provider stanzas. Legacy flat
+`WARMUP_MODEL`, `WARMUP_SCHEDULE` and smart-mode keys migrate to the Claude
+provider on first save, with a `.bak` copy kept beside the old config.
+
+## Safety and quota semantics
+
+A warmup is a real billable/subscription request, including pulse-only adapters.
+Enable only plans whose reset timing you intentionally want to align. Provider
+limits and model catalogs change over time, so model IDs and binary paths remain
+configurable instead of being baked into the scheduler.
+
+The warmup workdir contains no project code. Codex runs ephemeral and read-only;
+Kimi loads an empty skills directory; Claude starts in safe mode. Logs and output
+captures are retained for 14 days by default.
 
 ## License
 
