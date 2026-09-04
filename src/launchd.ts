@@ -1,10 +1,11 @@
+import { spawnSync } from 'node:child_process';
 // launchd (LaunchAgent) management: generate the plist, load/unload, query state.
 // Multi-provider: a single plist drives the tick for ALL enabled providers.
 // The tick iterates them; per-provider workStart/workEnd/week are read from
 // warmup.env on disk (so they don't have to live in the plist env).
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+
 import { HOME, LABEL, PLIST_PATH, LOG_DIR, GUI_DOMAIN, SELF_INVOCATION } from './paths.js';
 import type { MultiConfig } from './types.js';
 

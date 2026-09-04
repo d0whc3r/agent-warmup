@@ -45,7 +45,7 @@ export interface ProviderConfig {
   binary: string;
   model: string;
   tmuxSession: string;
-  armScriptPath: string; // resolved at runtime; defaults to ~/.claude/warmup/arm-<id>.sh
+  armScriptPath: string; // resolved at runtime under the configured warmup home
   workStart: number;
   workEnd: number;
   weeklyStopPercent: number;
@@ -117,12 +117,7 @@ export interface Config {
   tmuxSession: string;
 }
 
-type DecisionAction =
-  | 'warm'
-  | 'skip-offhours'
-  | 'skip-schedule'
-  | 'skip-weekly'
-  | 'skip-active';
+type DecisionAction = 'warm' | 'skip-offhours' | 'skip-schedule' | 'skip-weekly' | 'skip-active';
 
 export interface Decision {
   action: DecisionAction;

@@ -2,10 +2,10 @@
 // providers ship built-in; loadConfig() reads `WARMUP_PROVIDERS` (CSV) and the
 // order there is the order the tick iterates.
 import type { ProviderId } from '../types.js';
-import type { Provider } from './types.js';
 import { claudeProvider } from './claude.js';
 import { opencodeProvider } from './opencode.js';
 import { codexProvider, kimiProvider, minimaxProvider, zaiProvider } from './subscriptions.js';
+import type { Provider } from './types.js';
 
 // The full set of built-in providers. New providers get added here (and only
 // here); everything else reads from `getProvider(id)` / `listProviderIds()`.

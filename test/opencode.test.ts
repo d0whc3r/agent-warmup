@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
 import { parseStatsCost } from '../src/providers/opencode.js';
 
 // A realistic `opencode stats --days 7 --models 1` capture. The model column

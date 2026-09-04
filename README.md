@@ -1,6 +1,7 @@
 # agent-warmup
 
-[![CI](https://github.com/d0whc3r/claude-warmup/actions/workflows/ci.yml/badge.svg)](https://github.com/d0whc3r/claude-warmup/actions/workflows/ci.yml)
+[![CI](https://github.com/d0whc3r/agent-warmup/actions/workflows/ci.yml/badge.svg)](https://github.com/d0whc3r/agent-warmup/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/d0whc3r/agent-warmup)](https://github.com/d0whc3r/agent-warmup/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Prime the usage windows of several AI coding subscriptions before you work. A
@@ -13,14 +14,14 @@ alias, and existing installs under `~/.claude/warmup` are detected automatically
 
 ## Supported providers
 
-| ID | Service | Runner | Usage strategy | Default model |
-| --- | --- | --- | --- | --- |
-| `claude` | Claude Code | interactive Claude session in `tmux` | live `/usage` | `haiku` |
-| `codex` | OpenAI Codex | `codex exec`, ephemeral/read-only | local five-hour estimate | `gpt-5.6-luna` |
-| `zai` | Z.AI GLM Coding Plan | authenticated OpenCode provider | local five-hour estimate | `zai-coding-plan/glm-5.3-flash` |
-| `kimi` | Kimi Code | `kimi -p` | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding` |
-| `opencode` | OpenCode Go | `opencode run` + `opencode stats` | live weekly + local session estimate | `opencode-go/deepseek-v4-flash` |
-| `minimax` | MiniMax Token Plan | authenticated OpenCode provider | local five-hour estimate | `minimax-coding-plan/MiniMax-M2.7` |
+| ID         | Service              | Runner                               | Usage strategy                        | Default model                      |
+| ---------- | -------------------- | ------------------------------------ | ------------------------------------- | ---------------------------------- |
+| `claude`   | Claude Code          | interactive Claude session in `tmux` | live `/usage`                         | `haiku`                            |
+| `codex`    | OpenAI Codex         | `codex exec`, ephemeral/read-only    | local five-hour estimate              | `gpt-5.6-luna`                     |
+| `zai`      | Z.AI GLM Coding Plan | authenticated OpenCode provider      | local five-hour estimate              | `zai-coding-plan/glm-5.3-flash`    |
+| `kimi`     | Kimi Code            | `kimi -p`                            | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding`        |
+| `opencode` | OpenCode Go          | `opencode run` + `opencode stats`    | live weekly + local session estimate  | `opencode-go/deepseek-v4-flash`    |
+| `minimax`  | MiniMax Token Plan   | authenticated OpenCode provider      | local five-hour estimate              | `minimax-coding-plan/MiniMax-M2.7` |
 
 Claude is enabled by default. Every other provider is opt-in because a warmup
 consumes real quota. Codex, Z.AI, Kimi, and MiniMax currently expose no stable
@@ -46,11 +47,44 @@ For Z.AI and MiniMax, connect the corresponding Coding Plan inside OpenCode
 first (`opencode auth login`). Credentials stay in each vendor CLI's own auth
 store; `agent-warmup` never persists API keys.
 
-## Install from source
+## Install
 
 ```bash
-git clone https://github.com/d0whc3r/claude-warmup.git
-cd claude-warmup
+curl -fsSL https://github.com/d0whc3r/agent-warmup/releases/latest/download/install.sh | bash
+```
+
+The script detects macOS/Linux and x64/arm64, downloads the matching binary from
+the [latest GitHub Release](https://github.com/d0whc3r/agent-warmup/releases/latest),
+and installs it as `~/.local/bin/agent-warmup` (with a `claude-warmup` alias).
+If that URL 404s (no tag has attached `install.sh` yet), use the copy on `main`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/d0whc3r/agent-warmup/main/install.sh | bash
+```
+
+Override the destination with `INSTALL_DIR`, or pin a tag with `VERSION`:
+
+```bash
+INSTALL_DIR=/usr/local/bin VERSION=v1.2.3 \
+  curl -fsSL https://github.com/d0whc3r/agent-warmup/releases/latest/download/install.sh | bash
+```
+
+| Platform            | Asset                       |
+| ------------------- | --------------------------- |
+| Linux x64           | `agent-warmup-linux-x64`    |
+| Linux arm64         | `agent-warmup-linux-arm64`  |
+| macOS Intel         | `agent-warmup-darwin-x64`   |
+| macOS Apple Silicon | `agent-warmup-darwin-arm64` |
+
+macOS binaries are ad-hoc signed. The installer clears the Gatekeeper quarantine
+attribute; if the first launch is still blocked, use System Settings → Privacy &
+Security → Open Anyway.
+
+### From source
+
+```bash
+git clone https://github.com/d0whc3r/agent-warmup.git
+cd agent-warmup
 pnpm install
 pnpm link --global
 agent-warmup status
@@ -155,6 +189,21 @@ configurable instead of being baked into the scheduler.
 The warmup workdir contains no project code. Codex runs ephemeral and read-only;
 Kimi loads an empty skills directory; Claude starts in safe mode. Logs and output
 captures are retained for 14 days by default.
+
+## Releasing
+
+Push a version tag. GitHub Actions builds the four SEA binaries, attaches
+them to the GitHub Release for that tag, and uploads `install.sh` so the
+curl installer can fetch that release:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Tags with a hyphen (`v1.2.3-rc.1`) are published as GitHub prereleases.
+`workflow_dispatch` on `.github/workflows/release.yml` smoke-tests the same
+matrix without publishing.
 
 ## License
 

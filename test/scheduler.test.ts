@@ -1,11 +1,12 @@
+import assert from 'node:assert/strict';
 // The scheduler generators turn a Config into the artifacts that actually drive the
 // warmup: a launchd plist and a crontab block. A bug here means the wrong schedule
 // gets installed, so the generated text is asserted directly (the surrounding
 // launchctl/crontab I/O is thin glue and not exercised here).
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { generatePlist } from '../src/launchd.js';
+
 import { buildBlock, stripBlock } from '../src/cron.js';
+import { generatePlist } from '../src/launchd.js';
 import type { MultiConfig, SmartConfig } from '../src/types.js';
 
 // Wrap a legacy flat Config into a MultiConfig for the new scheduler signatures.

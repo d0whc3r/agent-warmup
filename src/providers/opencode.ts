@@ -1,18 +1,16 @@
+import { spawnSync } from 'node:child_process';
 // src/providers/opencode.ts -- the OpenCode Go provider. Probe = `opencode stats`
 // (built-in) for weekly; session-active is not queryable, falls back to the cache
 // (see spec A-4 + the circuit-breaker in decide()).
 import fs from 'node:fs';
-import { spawnSync } from 'node:child_process';
+
 import { ARM_SCRIPT, ARM_SCRIPT_SRC, expandHome } from '../paths.js';
 import { differenceInMilliseconds } from '../time.js';
-
-import type { Decision, ProviderCache, ProviderUsage } from '../types.js';
-import type { ProbeContext, Provider } from './types.js';
+import type { Decision, ProviderUsage } from '../types.js';
 import { inferWindowFromCache, recordArmWithCooldown } from './common.js';
+import type { ProbeContext, Provider } from './types.js';
 
 const GO_WEEKLY_USD = 30; // 30 USD per week
-const FAIL_WINDOW_MS = 30 * 60 * 1000; // 30 min
-const COOLDOWN_MS = 60 * 60 * 1000; // 1h
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
 function isExecutable(p: string): boolean {
@@ -114,33 +112,6 @@ function armScript(): string {
   return fs.readFileSync(ARM_SCRIPT_SRC('opencode'), 'utf8');
 }
 
-// Circuit-breaker: when 2 consecutive arm failures happen within 30 min, set a
-// 1h cooldown on the provider. The next decide() consults `cooldownUntil` and
-// returns skip-active. Cooldown is cleared on the next successful arm (the tick
-// calls `clearCooldown` after a 0-status runProvider).
-export function onArmFailure(
-  cache: ProviderCache | null,
-  now: number = Date.now(),
-): { next: ProviderCache; escalated: boolean } {
-  const last = cache?.cooldownUntil ?? 0;
-  // If we already failed within the 30-min window, escalate to 1h cooldown from now.
-  if (last > 0 && now - last < FAIL_WINDOW_MS) {
-    return { next: { ...cache, cooldownUntil: now + COOLDOWN_MS }, escalated: true };
-  }
-  // First failure in a while: set a stamp; the next failure within 30 min
-  // escalates. (cooldownUntil doubles as the "last failure" stamp when not
-  // escalated; decide() only honors it when it's in the future.)
-  return { next: { ...cache, cooldownUntil: now }, escalated: false };
-}
-
-// Clear any cooldown on a successful arm.
-export function clearCooldown(cache: ProviderCache | null): ProviderCache {
-  if (!cache?.cooldownUntil) return cache ?? {};
-  const next = { ...cache };
-  delete next.cooldownUntil;
-  return next;
-}
-
 export const opencodeProvider: Provider = {
   id: 'opencode',
   name: 'OpenCode Go',
@@ -160,11 +131,5 @@ export const opencodeProvider: Provider = {
     WARMUP_PROVIDER: 'opencode',
     WARMUP_PROVIDER_NAME: 'OpenCode Go',
   }),
-  onArmFailure: (ctx, err) => {
-    // The tick reads/writes the per-provider cache itself; this hook is here
-    // for future in-process state (e.g. metrics) -- kept as a no-op for now.
-    void ctx;
-    void err;
-  },
   recordArmResult: (ctx, cache, status) => recordArmWithCooldown(cache, status, ctx.now),
 };

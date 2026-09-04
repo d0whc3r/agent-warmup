@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isSea, getAsset } from 'node:sea';
+
 import { ARM_SCRIPT } from './paths.js';
 import { getProvider } from './providers/index.js';
 import type { ProviderId } from './types.js';

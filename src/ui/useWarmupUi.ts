@@ -1,3 +1,4 @@
+import { useApp, useInput, useStdout } from 'ink';
 // The TUI controller: owns all state, the keyboard handlers and useInput, and hands
 // the components a flat, read-only view-model. Keeping the logic here lets every
 // component stay a pure function of its props.
@@ -13,15 +14,15 @@
 // so there is always feedback -- which also gives screen-reader users an audible
 // result for each keystroke.
 import { useState } from 'react';
-import { useApp, useInput, useStdout } from 'ink';
+
 import { loadConfig, saveConfig, getView, MODELS, SCHEDULERS, TICK_CHOICES } from '../config.js';
-import { getStatus } from '../status.js';
+import { pad2 } from '../format.js';
 import { formatUsage } from '../providers/claude.js';
 import { getProvider } from '../providers/index.js';
-import { pad2 } from '../format.js';
 import * as schedule from '../schedule.js';
-import { buildRows, hoursPerRow, MAX_WIDTH, MOVE_HINT, WIDE_AT, WIDE_MAX } from './model.js';
+import { getStatus } from '../status.js';
 import type { Config, SmartConfig, Status, UiAction } from '../types.js';
+import { buildRows, hoursPerRow, MAX_WIDTH, MOVE_HINT, WIDE_AT, WIDE_MAX } from './model.js';
 
 // Cycle through a readonly choice list by a direction (-1/+1), wrapping at both ends.
 const cycle = <T>(arr: readonly T[], cur: T, dir: number): T =>

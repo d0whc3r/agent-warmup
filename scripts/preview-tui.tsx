@@ -1,10 +1,12 @@
 // Throwaway preview harness: render the TUI to stdout at a given width so we can see
 // the actual frame. Usage: node --import tsx scripts/preview-tui.tsx [cols] [mode] [sr]
 import { EventEmitter } from 'node:events';
-import React from 'react';
+
 import { render } from 'ink';
-import App from '../src/ui/App.jsx';
+import React from 'react';
+
 import type { Config, Status, UsageCache } from '../src/types.js';
+import App from '../src/ui/App.jsx';
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 const stripAnsi = (s: string): string => s.replace(ANSI, '');

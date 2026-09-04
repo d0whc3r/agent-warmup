@@ -3,10 +3,11 @@
 // — the smart-mode band bar and the fixed-mode hour grid — is aria-hidden, so the
 // screen reader hears the summary instead of a wall of block characters.
 import { Box, Text } from 'ink';
-import { AXIS, chunk, HOURS } from '../model.js';
+
 import { pad2 } from '../../format.js';
-import { Card, Choice, Pointer, SettingRow } from './primitives.jsx';
 import type { Config, SmartConfig } from '../../types.js';
+import { AXIS, chunk, HOURS } from '../model.js';
+import { Card, Choice, Pointer, SettingRow } from './primitives.jsx';
 
 const SMART_KEYS = ['workStart', 'workEnd', 'tick', 'weeklyStop'];
 

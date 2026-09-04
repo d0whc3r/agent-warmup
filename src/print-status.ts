@@ -1,9 +1,9 @@
+import { pad2, ago } from './format.js';
+import { formatUsage } from './providers/claude.js';
 // Headless status output for the CLI (the `status` command and the post-action
 // summaries). The interactive equivalent lives in the Ink TUI; both read
 // getStatus() and share the same display formatting helpers.
 import { getStatus } from './status.js';
-import { formatUsage } from './providers/claude.js';
-import { pad2, ago } from './format.js';
 
 const dot = (on: boolean): string => (on ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m');
 

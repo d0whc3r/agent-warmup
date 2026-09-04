@@ -1,6 +1,6 @@
 // One smart-mode tick: iterate every enabled provider, probe usage, decide
 // whether to arm, and arm when warranted. Each provider keeps its own
-// per-provider cache entry under ~/.claude/warmup/usage-cache.json. The
+// per-provider cache entry under the configured warmup home. The
 // scheduler runs this every `tickMinutes` (smart mode) or per fixed-hour
 // (fixed mode) -- in either case the iteration order is the order the user
 // set in WARMUP_PROVIDERS.
@@ -11,11 +11,13 @@
 // handles the cross-cutting concerns (cache, log lines, exit status).
 import fs from 'node:fs';
 import path from 'node:path';
-import { runNow } from './runner.js';
+
+import { loadConfig } from './config.js';
 import { appendLog, pruneLogs } from './logs.js';
 import { USAGE_CACHE } from './paths.js';
-import { loadConfig } from './config.js';
 import { getProvider } from './providers/index.js';
+import type { ProbeContext, Provider } from './providers/types.js';
+import { runNow } from './runner.js';
 import type {
   Decision,
   MultiConfig,
@@ -25,7 +27,6 @@ import type {
   ProviderUsage,
   UsageCache,
 } from './types.js';
-import type { ProbeContext, Provider } from './providers/types.js';
 
 interface ProviderTickResult {
   id: ProviderId;
@@ -89,7 +90,7 @@ export function runTick({
     : multi.shared.providers.filter((id) => multi.providers[id]?.enabled);
 
   for (const id of providers) {
-  const providerCfg = multi.providers[id];
+    const providerCfg = multi.providers[id];
     if (!providerCfg) continue;
     const providerCache = cache.providers[id] ?? {};
     const result = tickOne({
@@ -134,10 +135,7 @@ function tickOne({
   let usage: ProviderUsage | null = null;
   let probed = false;
   try {
-    // Provider.probe is typed as sync-or-Promise (future-proofing); all
-    // current implementations are sync. Awaiting a non-Promise is a no-op
-    // in JS, but the type system needs a hint.
-    const probedUsage = (provider.probe as (c: typeof ctx) => ProviderUsage | null)(ctx);
+    const probedUsage = provider.probe(ctx);
     usage = probedUsage ?? null;
     probed = !!usage;
   } catch {

@@ -1,11 +1,11 @@
+import { loadConfig, getView } from './config.js';
+import * as cron from './cron.js';
+import { pad2 } from './format.js';
 // Aggregate status across config, launchd, cron, recent logs and the usage cache.
 import * as launchd from './launchd.js';
-import * as cron from './cron.js';
-import { loadConfig, getView } from './config.js';
 import { lastRunSummary } from './runner.js';
 import { readCache } from './tick.js';
 import { getHours } from './time.js';
-import { pad2 } from './format.js';
 import type { MultiConfig, Status } from './types.js';
 
 export function nextRun(multi: MultiConfig, now: Date = new Date()): string | null {

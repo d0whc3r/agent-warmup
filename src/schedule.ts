@@ -1,7 +1,7 @@
+import { ensureArmScript } from './assets.js';
+import * as cron from './cron.js';
 // High-level scheduling: apply/stop the active scheduler, keeping the other off.
 import * as launchd from './launchd.js';
-import * as cron from './cron.js';
-import { ensureArmScript } from './assets.js';
 import type { MultiConfig } from './types.js';
 
 export function applySchedule(multi: MultiConfig): boolean {

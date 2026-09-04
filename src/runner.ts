@@ -1,11 +1,11 @@
+import { spawnSync } from 'node:child_process';
 // Run a provider's warmup now and read recent log output.
 import fs from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { WARMUP_LOG, LOG_DIR, WARMUP_HOME } from './paths.js';
-import { loadConfig } from './config.js';
-import { ensureArmScript } from './assets.js';
-import { getProvider } from './providers/index.js';
 
+import { ensureArmScript } from './assets.js';
+import { loadConfig } from './config.js';
+import { WARMUP_LOG, LOG_DIR, WARMUP_HOME } from './paths.js';
+import { getProvider } from './providers/index.js';
 import type { ProviderId } from './types.js';
 
 // Spawn the arm script for the given provider (or the selected one when

@@ -6,10 +6,11 @@
 #      running node binary in a single step (Node >=26; no postject)
 #   3. re-sign on macOS (the binary was modified after signing)
 #
-# Produces dist/agent-warmup. Release artifacts for every target are cross-compiled
+# Produces dist/agent-warmup. Release binaries for every target are cross-compiled
 # from ubuntu in .github/workflows/release.yml (it overrides sea-config.json's
-# `executable`); this script is the simple native path for local dev. Windows is out
-# of scope: the warmup mechanism needs tmux + bash, which Windows lacks.
+# `executable`) and attached to the GitHub Release for the version tag. This script
+# is the simple native path for local dev. Windows is out of scope: the warmup
+# mechanism needs tmux + bash, which Windows lacks.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

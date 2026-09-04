@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
 import { nextRun } from '../src/status.js';
 import type { MultiConfig } from '../src/types.js';
 

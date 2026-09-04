@@ -4,10 +4,11 @@
 // identically for sighted and screen-reader users. Never holds focus, so its
 // card border stays dimmed.
 import { Box, Text } from 'ink';
+
 import { ago } from '../../format.js';
+import type { UsageView } from '../../types.js';
 import { LABEL_W } from '../model.js';
 import { Card } from './primitives.jsx';
-import type { UsageView } from '../../types.js';
 
 function UsageRow({ label, value, tail }: { label: string; value: string; tail?: string | null }) {
   return (

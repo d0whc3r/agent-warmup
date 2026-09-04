@@ -3,8 +3,9 @@
 // no decorative noise; the keys column is bold + cyan but the words stand on their own
 // (colour is never the only signal). Toggled from the controller's showHelp state.
 import { Box, Text } from 'ink';
-import { Card } from './primitives.jsx';
+
 import type { Shortcut } from '../model.js';
+import { Card } from './primitives.jsx';
 
 // Pad the keys into a fixed column so the action labels line up. Spelt as a string
 // literal (computed), never JSX whitespace between elements.

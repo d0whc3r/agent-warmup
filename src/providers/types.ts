@@ -32,7 +32,7 @@ export interface Provider {
   readonly probeKind: 'live' | 'estimated';
   // Read the provider's current usage. Returns null on transient failure — the
   // caller falls back to inferFromCache. Pure text in / structured out.
-  probe(ctx: ProbeContext): Promise<ProviderUsage | null> | ProviderUsage | null;
+  probe(ctx: ProbeContext): ProviderUsage | null;
   // Produce the provider's best estimate when no live quota endpoint exists or
   // a probe fails. Most subscription plans use the last successful arm time.
   inferFromCache(ctx: ProbeContext, cache: ProviderCache | null): ProviderUsage;
@@ -48,10 +48,6 @@ export interface Provider {
   // Provider-specific variables consumed by the arm script. Credentials remain
   // in each CLI's own auth store; this only selects the binary and display name.
   armEnv(ctx: ProbeContext): NodeJS.ProcessEnv;
-  // How this provider's arm failure is reported back to the tick for the
-  // circuit-breaker / cooldown logic (see opencode's decide for the canonical
-  // impl). Default: no cooldown (legacy behavior).
-  onArmFailure?(ctx: ProbeContext, err: unknown): void;
   // Optional persistent bookkeeping after an arm attempt (for example a
   // circuit-breaker cooldown). Keeping this here avoids id checks in tick.ts.
   recordArmResult?(

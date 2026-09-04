@@ -3,16 +3,17 @@
 // columns on wide ones. Multi-provider: the Header shows the selected provider;
 // settings and usage are bound to it. Press 'p' in the TUI to cycle providers.
 import { Box } from 'ink';
-import { useWarmupUi } from './useWarmupUi.js';
-import { Header } from './components/Header.jsx';
-import { SettingsSection } from './components/SettingsSection.jsx';
-import { ScheduleSection } from './components/ScheduleSection.jsx';
-import { UsageSection } from './components/UsageSection.jsx';
-import { ActionsSection } from './components/ActionsSection.jsx';
-import { StatusBar } from './components/StatusBar.jsx';
-import { HelpOverlay } from './components/HelpOverlay.jsx';
-import { SHORTCUTS } from './model.js';
+
 import type { Status, UiAction } from '../types.js';
+import { ActionsSection } from './components/ActionsSection.jsx';
+import { Header } from './components/Header.jsx';
+import { HelpOverlay } from './components/HelpOverlay.jsx';
+import { ScheduleSection } from './components/ScheduleSection.jsx';
+import { SettingsSection } from './components/SettingsSection.jsx';
+import { StatusBar } from './components/StatusBar.jsx';
+import { UsageSection } from './components/UsageSection.jsx';
+import { SHORTCUTS } from './model.js';
+import { useWarmupUi } from './useWarmupUi.js';
 
 export default function App({
   onAction,

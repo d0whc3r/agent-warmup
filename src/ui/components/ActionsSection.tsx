@@ -6,8 +6,9 @@
 // (a menu mnemonic); the underline is purely decorative — the parent Box's aria-label
 // gives the screen reader the whole plain label, so the styling never reaches it.
 import { Box, Text } from 'ink';
-import { Card, Pointer } from './primitives.jsx';
+
 import type { Row } from '../model.js';
+import { Card, Pointer } from './primitives.jsx';
 
 // Render the label with its accelerator character underlined. Slices are string
 // values, so their spaces survive (unlike bare JSX whitespace). Falls back to a plain

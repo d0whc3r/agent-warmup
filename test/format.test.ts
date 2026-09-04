@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
 import { ago, pad2 } from '../src/format.js';
 
 test('ago reads in minutes under an hour and rounds to hours beyond', () => {

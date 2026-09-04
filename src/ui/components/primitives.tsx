@@ -7,6 +7,7 @@
 // literal child (e.g. {'  '}), never a bare space between elements.
 import { Box, Text } from 'ink';
 import type { ReactNode } from 'react';
+
 import { LABEL_W } from '../model.js';
 
 // The "▶ " gutter marking the focused row (two spaces when not, so the label column

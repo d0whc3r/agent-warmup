@@ -2,16 +2,16 @@
 // agent-warmup CLI. With no subcommand it opens the Ink TUI; otherwise it runs
 // a headless action so it stays scriptable.
 import { loadConfig, saveConfig, MODELS, SCHEDULERS, MODES, getView } from './config.js';
-import * as schedule from './schedule.js';
 import * as launchd from './launchd.js';
+import { LABEL, PLIST_PATH, WARMUP_LOG, CONFIG_PATH, USAGE_CACHE } from './paths.js';
+import { printStatus } from './print-status.js';
+import { formatUsage } from './providers/claude.js';
+import { ALL_PROVIDER_IDS, getProvider } from './providers/index.js';
 import { runNow, viewLogs } from './runner.js';
+import * as schedule from './schedule.js';
 import { getStatus } from './status.js';
 import { runTick, readCache, writeCache } from './tick.js';
-import { formatUsage } from './providers/claude.js';
-import { printStatus } from './print-status.js';
-import { LABEL, PLIST_PATH, WARMUP_LOG, CONFIG_PATH, USAGE_CACHE } from './paths.js';
 import type { Config, ProviderId, ProviderInput, UiAction } from './types.js';
-import { ALL_PROVIDER_IDS, getProvider } from './providers/index.js';
 
 const argv = process.argv.slice(2);
 const cmd: string | undefined = argv[0];
@@ -124,9 +124,17 @@ async function launchTUI(): Promise<void> {
   }
 }
 
-function parseProviderFlag(rest: string[]): { id: ProviderId; rest: string[] } {
+function parseProviderFlag(
+  rest: string[],
+  defaultToSelected = true,
+): { id: ProviderId | undefined; rest: string[] } {
   const i = rest.indexOf('--provider');
-  if (i === -1) return { id: loadConfig().shared.selectedProvider, rest };
+  if (i === -1) {
+    return {
+      id: defaultToSelected ? loadConfig().shared.selectedProvider : undefined,
+      rest,
+    };
+  }
   const id = rest[i + 1] as ProviderId;
   if (!id || !ALL_PROVIDER_IDS.includes(id)) {
     console.error(`--provider must be one of: ${ALL_PROVIDER_IDS.join(', ')}`);
@@ -144,6 +152,7 @@ switch (cmd) {
     break;
   case 'usage': {
     const { id, rest: _r2 } = parseProviderFlag(rest);
+    if (!id) throw new Error('selected provider is unavailable');
     const multi = loadConfig();
     const provider = multi.providers[id];
     if (!provider) {
@@ -153,7 +162,7 @@ switch (cmd) {
     process.stderr.write(`probing ${id} (${provider.model})…\n`);
     const ctx = { cfg: provider, shared: multi.shared, now: new Date() };
     const adapter = getProvider(id);
-    const live = (adapter.probe as (c: typeof ctx) => import('./types.js').ProviderUsage | null)(ctx);
+    const live = adapter.probe(ctx);
     const cache = readCache();
     cache.providers = cache.providers ?? {};
     const usage = live ?? adapter.inferFromCache(ctx, cache.providers[id] ?? null);
@@ -177,7 +186,9 @@ switch (cmd) {
   }
   case 'tick': {
     const dryRun = rest.includes('--dry-run') || rest.includes('-n');
-    const { id, rest: _r2 } = parseProviderFlag(rest);
+    // An unqualified scheduler tick must visit every enabled provider. The
+    // selected provider is only a UI/default-run concern.
+    const { id, rest: _r2 } = parseProviderFlag(rest, false);
     const { results } = runTick({ dryRun, providerId: id });
     for (const r of results) console.log(`[${r.id}] ${r.decision.action} — ${r.decision.reason}`);
     // Surface the worst arm status so launchd/cron monitoring sees failures
@@ -188,6 +199,7 @@ switch (cmd) {
   case 'run':
   case 'now': {
     const { id, rest: _r2 } = parseProviderFlag(rest);
+    if (!id) throw new Error('selected provider is unavailable');
     process.exit(runNow(id));
   }
   case 'start': {

@@ -1,4 +1,4 @@
-// Load and persist the warmup configuration (~/.claude/warmup/warmup.env).
+// Load and persist the warmup configuration (normally ~/.agent-warmup/warmup.env).
 // Two schemas live here:
 //
 //   * LEGACY (pre-multi-provider): flat WARMUP_* keys, single (claude) provider.
@@ -17,7 +17,9 @@
 // (the headless status command, the Ink TUI, the subcommand setters).
 import fs from 'node:fs';
 import path from 'node:path';
+
 import { CONFIG_PATH } from './paths.js';
+import { ALL_PROVIDER_IDS } from './providers/index.js';
 import type {
   Config,
   ConfigInput,
@@ -31,7 +33,6 @@ import type {
   SharedConfig,
   SmartConfig,
 } from './types.js';
-import { ALL_PROVIDER_IDS } from './providers/index.js';
 
 export const MODELS: readonly Model[] = ['haiku', 'sonnet', 'opus'];
 // launchd is macOS-only; elsewhere (Linux) cron is the only scheduler. normalize()
@@ -94,11 +95,9 @@ const DEFAULT_SHARED: SharedConfig = {
 
 export const DEFAULT_MULTI: MultiConfig = {
   shared: { ...DEFAULT_SHARED },
-  providers: {
-    ...Object.fromEntries(
-      ALL_PROVIDER_IDS.map((id) => [id, { ...DEFAULT_PROVIDERS[id], enabled: id === 'claude' }]),
-    ),
-  },
+  providers: Object.fromEntries(
+    ALL_PROVIDER_IDS.map((id) => [id, { ...DEFAULT_PROVIDERS[id], enabled: id === 'claude' }]),
+  ),
 } as MultiConfig;
 
 // Legacy default (kept for backward-compat with existing tests that construct

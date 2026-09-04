@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
 import { decide } from '../src/providers/claude.js';
 import type { ProviderConfig, SharedConfig } from '../src/types.js';
 

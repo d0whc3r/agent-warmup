@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
 import { parseUsage, formatUsage, inferFromCache } from '../src/providers/claude.js';
 import { parseReset, FIVE_HOURS_MS } from '../src/time.js';
 

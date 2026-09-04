@@ -1,5 +1,7 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "singleQuote": true,
-  "ignorePatterns": [".agents/**"]
+  "ignorePatterns": [".agents/**"],
+  "sortImports": true,
+  "sortPackageJson": true
 }

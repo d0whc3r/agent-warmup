@@ -2,8 +2,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { isSea } from 'node:sea';
+import { fileURLToPath } from 'node:url';
+
 import type { ProviderId } from './types.js';
 
 // In a single-executable build there is no source file on disk — import.meta.url is

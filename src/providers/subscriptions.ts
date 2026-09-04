@@ -3,10 +3,10 @@
 // one successful arm counts as an active five-hour window; failures trip a
 // short circuit breaker so a broken login cannot be hammered by the scheduler.
 import fs from 'node:fs';
-import { ARM_SCRIPT, ARM_SCRIPT_SRC } from '../paths.js';
-import { decideWindow, inferWindowFromCache, recordArmWithCooldown } from './common.js';
 
+import { ARM_SCRIPT, ARM_SCRIPT_SRC } from '../paths.js';
 import type { ProviderId } from '../types.js';
+import { decideWindow, inferWindowFromCache, recordArmWithCooldown } from './common.js';
 import type { Provider } from './types.js';
 
 interface SubscriptionProviderOptions {

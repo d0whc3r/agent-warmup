@@ -1,32 +1,32 @@
 {
   "name": "agent-warmup",
   "version": "1.0.0",
-  "description": "Align AI coding-agent usage windows with your working hours from one terminal scheduler.",
+  "description": "Prime AI coding-agent usage windows from one terminal scheduler.",
   "keywords": [
     "claude",
     "claude-code",
+    "cli",
     "codex",
+    "cron",
     "glm",
     "kimi",
-    "minimax",
-    "cli",
-    "cron",
     "launchd",
     "macos",
+    "minimax",
     "scheduler",
     "tmux",
     "usage-limit",
     "warmup"
   ],
-  "homepage": "https://github.com/d0whc3r/claude-warmup#readme",
+  "homepage": "https://github.com/d0whc3r/agent-warmup#readme",
   "bugs": {
-    "url": "https://github.com/d0whc3r/claude-warmup/issues"
+    "url": "https://github.com/d0whc3r/agent-warmup/issues"
   },
   "license": "MIT",
   "author": "d0whc3r",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/d0whc3r/claude-warmup.git"
+    "url": "git+https://github.com/d0whc3r/agent-warmup.git"
   },
   "bin": {
     "agent-warmup": "dist/agent-warmup.mjs",

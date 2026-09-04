@@ -1,11 +1,11 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_MULTI, parseMultiConfig, serializeMultiConfig } from '../src/config.js';
-import { ALL_PROVIDER_IDS, getProvider } from '../src/providers/index.js';
-import { recordArmWithCooldown } from '../src/providers/common.js';
-import { decideForMode } from '../src/tick.js';
+import { test } from 'node:test';
 
+import { DEFAULT_MULTI, parseMultiConfig, serializeMultiConfig } from '../src/config.js';
+import { recordArmWithCooldown } from '../src/providers/common.js';
+import { ALL_PROVIDER_IDS, getProvider } from '../src/providers/index.js';
 import type { ProbeContext } from '../src/providers/types.js';
+import { decideForMode } from '../src/tick.js';
 
 test('all built-in subscriptions have config, metadata and an arm script', () => {
   assert.deepEqual(ALL_PROVIDER_IDS, ['claude', 'codex', 'zai', 'kimi', 'opencode', 'minimax']);

@@ -1,9 +1,10 @@
+import { spawnSync } from 'node:child_process';
 // src/providers/claude.ts -- the Claude Code provider. Wraps the existing parseUsage
 // + decide + arm-claude.sh body. No behavior change for users who only have claude.
 // The legacy usage.ts/decide.ts code is inlined here per spec section 11/12; their
 // tests import from this module via the same exported names.
 import fs from 'node:fs';
-import { spawnSync } from 'node:child_process';
+
 import { ARM_SCRIPT, ARM_SCRIPT_SRC, TMUX_BIN, WARMUP_WORKDIR, expandHome } from '../paths.js';
 import {
   FIVE_HOURS_MS,
@@ -15,7 +16,6 @@ import {
   differenceInMilliseconds,
   isAfter,
 } from '../time.js';
-
 import type { Decision, LimitBlock, ProviderCache, ProviderUsage } from '../types.js';
 import type { ProbeContext, Provider } from './types.js';
 

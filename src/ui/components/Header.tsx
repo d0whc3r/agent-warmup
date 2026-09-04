@@ -2,6 +2,7 @@
 // shows the selected provider id next to the title so the user always knows
 // which provider's settings they're editing.
 import { Box, Text } from 'ink';
+
 import type { MultiConfig, Status } from '../../types.js';
 
 export function Header({ config, status }: { config: MultiConfig; status: Status }) {

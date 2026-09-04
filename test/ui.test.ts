@@ -1,18 +1,20 @@
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 // Headless render smoke test for the Ink TUI. Ink needs a TTY, so we render against
 // fake stdout/stdin streams and assert on the laid-out frame. It guards two things:
 // the UI renders without throwing (catches the JSX significant-whitespace crash that
 // type-checking can't see), and the accessibility contract holds -- colour-independent
 // markers in the visual frame, and clean linear text in screen-reader mode.
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import React from 'react';
+
 import { render } from 'ink';
+import React from 'react';
+
+import type { Config, MultiConfig, Status, UsageCache } from '../src/types.js';
 import App from '../src/ui/App.jsx';
 import { HelpOverlay } from '../src/ui/components/HelpOverlay.jsx';
 import { StatusBar } from '../src/ui/components/StatusBar.jsx';
 import { buildRows, SHORTCUTS } from '../src/ui/model.js';
-import type { Config, MultiConfig, Status, UsageCache } from '../src/types.js';
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 const stripAnsi = (s: string): string => s.replace(ANSI, '');

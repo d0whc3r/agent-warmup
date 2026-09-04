@@ -4,8 +4,9 @@
 // reader semantics are handled uniformly. The card border brightens while any of
 // these rows is focused.
 import { Text } from 'ink';
-import { Card, Choice, SettingRow } from './primitives.jsx';
+
 import type { Config } from '../../types.js';
+import { Card, Choice, SettingRow } from './primitives.jsx';
 
 const SETTINGS_KEYS = ['mode', 'scheduler', 'model', 'tmux'];
 

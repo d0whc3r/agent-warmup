@@ -1,5 +1,4 @@
 import { addMilliseconds, differenceInMilliseconds, formatClock } from '../time.js';
-
 import type { Decision, ProviderCache, ProviderUsage } from '../types.js';
 import type { ProbeContext } from './types.js';
 

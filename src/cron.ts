@@ -2,6 +2,7 @@
 // other cron entries. Multi-provider: a single cron line drives the tick for
 // all enabled providers.
 import { spawnSync } from 'node:child_process';
+
 import { CRON_LOG, SELF_INVOCATION } from './paths.js';
 import type { MultiConfig } from './types.js';
 
