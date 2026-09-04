@@ -75,6 +75,7 @@ Usage:
   agent-warmup tick [--dry-run] [--provider ID]  Decide and maybe warm
   agent-warmup run [--provider ID]  Run a warmup right now (foreground)
   agent-warmup start|stop|restart Manage the active scheduler
+  agent-warmup enable|disable      Toggle the installed launchd agent
   agent-warmup mode NAME          Set mode (${MODES.join(' | ')})
   agent-warmup schedule H ...     Set fixed-mode hours on the selected provider
   agent-warmup model NAME         Set model on the selected provider
@@ -275,8 +276,8 @@ switch (cmd) {
 }
 
 function handleProvider(rest: string[]): void {
-  const [sub, id, action, ...args] = rest;
-  if (sub === 'list' || !sub) {
+  const [id, action, ...args] = rest;
+  if (id === 'list' || !id) {
     const multi = loadConfig();
     for (const pid of ALL_PROVIDER_IDS) {
       const p = multi.providers[pid];
@@ -290,7 +291,7 @@ function handleProvider(rest: string[]): void {
     }
     return;
   }
-  if (!id || !ALL_PROVIDER_IDS.includes(id as ProviderId)) {
+  if (!ALL_PROVIDER_IDS.includes(id as ProviderId)) {
     console.error(`provider id must be one of: ${ALL_PROVIDER_IDS.join(', ')}`);
     process.exit(1);
   }
