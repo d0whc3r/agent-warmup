@@ -87,7 +87,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Must run before setup-node so its `cache: pnpm` finds pnpm on PATH.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v4
         with:
