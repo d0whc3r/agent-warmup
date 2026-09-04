@@ -43,7 +43,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # generate-notes walks commits since the previous tag
 
@@ -84,7 +84,7 @@ jobs:
           - { target: darwin-x64, os: darwin, arch: x64, sign: true }
           - { target: darwin-arm64, os: darwin, arch: arm64, sign: true }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Must run before setup-node so its `cache: pnpm` finds pnpm on PATH.
       - uses: pnpm/action-setup@v4

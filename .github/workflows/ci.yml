@@ -18,7 +18,7 @@ jobs:
     name: Lint, format & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Must run before setup-node so its `cache: pnpm` finds pnpm on PATH.
       # Version is read from the package.json "packageManager" field.
