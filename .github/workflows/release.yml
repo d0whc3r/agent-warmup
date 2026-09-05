@@ -33,7 +33,9 @@ permissions:
   contents: read
 
 env:
-  RCODESIGN_VERSION: '0.29.0' # bump as new apple-platform-rs releases land
+  # NOTE: must NOT be prefixed RCODESIGN_ — rcodesign treats RCODESIGN_* env vars
+  # as its config file values and would reject the unknown 'version' key.
+  APPLE_CODESIGN_VERSION: '0.29.0' # bump as new apple-platform-rs releases land
 
 jobs:
   prepare:
@@ -127,8 +129,8 @@ jobs:
       - name: Ad-hoc sign macOS binary
         if: matrix.sign
         run: |
-          PKG="apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl"
-          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${PKG}.tar.gz" -o rcodesign.tar.gz
+          PKG="apple-codesign-${APPLE_CODESIGN_VERSION}-x86_64-unknown-linux-musl"
+          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${APPLE_CODESIGN_VERSION}/${PKG}.tar.gz" -o rcodesign.tar.gz
           tar xf rcodesign.tar.gz
           RCODESIGN="$(find . -name rcodesign -type f | head -1)" # tolerate layout changes
           "$RCODESIGN" sign "out/agent-warmup-${{ matrix.target }}"
