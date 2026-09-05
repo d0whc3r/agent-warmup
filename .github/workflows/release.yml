@@ -52,22 +52,23 @@ jobs:
       - name: Create release from tag
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }} # via env, never interpolated into the shell
         run: |
-          tag="${{ github.ref_name }}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
             exit 0
           fi
           extra=()
-          case "$tag" in
+          case "$TAG" in
             *-*) extra+=(--prerelease) ;;
           esac
-          gh release create "$tag" --title "$tag" --generate-notes --verify-tag "${extra[@]}"
+          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag "${extra[@]}"
 
       - name: Attach curl installer
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" install.sh --clobber
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" install.sh --clobber
 
   build:
     name: Build (${{ matrix.target }})
@@ -133,6 +134,10 @@ jobs:
           curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${APPLE_CODESIGN_VERSION}/${PKG}.tar.gz" -o rcodesign.tar.gz
           tar xf rcodesign.tar.gz
           RCODESIGN="$(find . -name rcodesign -type f | head -1)" # tolerate layout changes
+          if [ -z "$RCODESIGN" ]; then
+            echo "✗ rcodesign binary not found in ${PKG}.tar.gz" >&2
+            exit 1
+          fi
           "$RCODESIGN" sign "out/agent-warmup-${{ matrix.target }}"
 
       # Only the linux-x64 binary can execute on the x64 ubuntu runner; the rest are
@@ -145,7 +150,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release upload "${{ github.ref_name }}" \
+          gh release upload "$TAG" \
             "out/agent-warmup-${{ matrix.target }}" \
             --clobber
