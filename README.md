@@ -4,52 +4,13 @@
 [![Release](https://img.shields.io/github/v/release/d0whc3r/agent-warmup)](https://github.com/d0whc3r/agent-warmup/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Prime the usage windows of several AI coding subscriptions before you work. A
-warmup is one deliberately tiny model request. For anchored five-hour windows
-this aligns the next reset with a useful time; for rolling windows it is only a
-scheduled readiness pulse and does not move the reset boundary.
+Keep the usage windows of your AI coding subscriptions primed before you start
+working. A _warmup_ is one deliberately tiny model request: on plans with an
+anchored five-hour window it aligns the next reset with a useful time; on
+rolling-window plans it is just a scheduled readiness pulse.
 
-The canonical CLI is `agent-warmup`. The old `claude-warmup` command remains an
-alias, and an existing `~/.claude/warmup` install is moved to `~/.agent-warmup`
-the first time the CLI runs.
-
-## Supported providers
-
-| ID         | Service              | Runner                               | Usage strategy                        | Default model                      |
-| ---------- | -------------------- | ------------------------------------ | ------------------------------------- | ---------------------------------- |
-| `claude`   | Claude Code          | interactive Claude session in `tmux` | live `/usage`                         | `haiku`                            |
-| `codex`    | OpenAI Codex         | `codex exec`, ephemeral/read-only    | rate limits from local session logs   | `gpt-5.6-luna`                     |
-| `zai`      | Z.AI GLM Coding Plan | authenticated OpenCode provider      | local five-hour estimate              | `zai-coding-plan/glm-5.3-flash`    |
-| `kimi`     | Kimi Code            | `kimi -p`                            | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding`        |
-| `opencode` | OpenCode Go          | `opencode run` + `opencode stats`    | live weekly + local session estimate  | `opencode-go/deepseek-v4-flash`    |
-| `minimax`  | MiniMax Token Plan   | authenticated OpenCode provider      | local five-hour estimate              | `minimax-coding-plan/MiniMax-M2.7` |
-
-Claude is enabled by default. Every other provider is opt-in because a warmup
-consumes real quota. Z.AI, Kimi, and MiniMax currently expose no stable
-machine-readable quota endpoint suitable for unattended polling, so the CLI
-conservatively treats a successful warmup within the last five hours as an
-active window (shown as `active (estimated)` in status and the TUI). Codex
-reads the five-hour and weekly percentages its own sessions log under
-`~/.codex/sessions`; warmups are ephemeral and do not refresh that log, so the
-figures are as of your last interactive Codex session.
-
-MiniMax is included because its Token Plan also has a five-hour allowance. Kimi
-is included as requested, but its official documentation calls the five-hour
-limit rolling: use it as an availability pulse, not as a way to shift a reset.
-Copilot, Gemini and Qwen are intentionally excluded because their relevant
-limits are fixed monthly/daily/weekly or genuinely sliding and no pulse was
-requested for them.
-
-## Requirements
-
-- macOS (launchd, with cron fallback) or Linux (cron)
-- Node.js 24+ and pnpm when running from source
-- The CLI for every provider you enable, already authenticated
-- `tmux` for Claude Code probing/arming; the other runners are non-interactive
-
-For Z.AI and MiniMax, connect the corresponding Coding Plan inside OpenCode
-first (`opencode auth login`). Credentials stay in each vendor CLI's own auth
-store; `agent-warmup` never persists API keys.
+Works with Claude Code, OpenAI Codex, Z.AI, Kimi, OpenCode Go and MiniMax —
+see [supported providers](docs/providers.md).
 
 ## Install
 
@@ -57,106 +18,56 @@ store; `agent-warmup` never persists API keys.
 curl -fsSL https://github.com/d0whc3r/agent-warmup/releases/latest/download/install.sh | bash
 ```
 
-The script detects macOS/Linux and x64/arm64, downloads the matching binary from
-the [latest GitHub Release](https://github.com/d0whc3r/agent-warmup/releases/latest),
-and installs it as `~/.local/bin/agent-warmup` (with a `claude-warmup` alias).
-If that URL 404s (no tag has attached `install.sh` yet), use the copy on `main`:
+Installs `~/.local/bin/agent-warmup` for macOS/Linux, x64 or arm64. Override the
+destination with `INSTALL_DIR`, or pin a version with `VERSION=v1.2.3`. If that
+URL 404s because no release has attached `install.sh` yet, use the copy on
+`main`: `https://raw.githubusercontent.com/d0whc3r/agent-warmup/main/install.sh`.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/d0whc3r/agent-warmup/main/install.sh | bash
-```
+macOS binaries are ad-hoc signed; if the first launch is blocked, allow it in
+System Settings → Privacy & Security → Open Anyway.
 
-Override the destination with `INSTALL_DIR`, or pin a tag with `VERSION`:
-
-```bash
-INSTALL_DIR=/usr/local/bin VERSION=v1.2.3 \
-  curl -fsSL https://github.com/d0whc3r/agent-warmup/releases/latest/download/install.sh | bash
-```
-
-| Platform            | Asset                       |
-| ------------------- | --------------------------- |
-| Linux x64           | `agent-warmup-linux-x64`    |
-| Linux arm64         | `agent-warmup-linux-arm64`  |
-| macOS Intel         | `agent-warmup-darwin-x64`   |
-| macOS Apple Silicon | `agent-warmup-darwin-arm64` |
-
-macOS binaries are ad-hoc signed. The installer clears the Gatekeeper quarantine
-attribute; if the first launch is still blocked, use System Settings → Privacy &
-Security → Open Anyway.
-
-### From source
-
-```bash
-git clone https://github.com/d0whc3r/agent-warmup.git
-cd agent-warmup
-pnpm install
-pnpm link --global
-agent-warmup status
-```
-
-Build with `pnpm build`. A standalone binary can be built on Node 26+ with
-`pnpm build:sea`; it is written to `dist/agent-warmup`.
+Requirements: macOS or Linux, the CLI of every provider you enable already
+authenticated, and `tmux` for Claude Code.
 
 ## Quick start
 
 ```bash
-# See which agent CLIs are installed on this machine.
-agent-warmup detect
-
-# Adopt the detected paths for any agent whose configured path does not work.
+# 1. See which agent CLIs are installed, and adopt the paths that work.
 agent-warmup detect --apply
 
-# See every built-in adapter. Only Claude starts enabled.
-agent-warmup provider list
-
-# Enable the subscriptions you use.
+# 2. Enable the subscriptions you use (only Claude starts enabled).
 agent-warmup provider codex enable
-agent-warmup provider zai enable
-agent-warmup provider kimi enable
 
-# Select which provider the unqualified model/schedule commands edit.
-agent-warmup provider codex select
-agent-warmup model gpt-5.6-luna
+# 3. Try one warmup by hand.
+agent-warmup run
 
-# Verify one warmup manually, then install the scheduler.
-agent-warmup run --provider codex   # one agent; without --provider, all enabled
+# 4. Install the scheduler.
 agent-warmup start
 ```
 
+Every warmup spends real quota, so enable only the plans whose reset timing you
+actually want to control.
+
 ## The terminal UI
 
-Running `agent-warmup` with no arguments opens the Ink terminal UI. It has three
-tabs — `tab` / `shift+tab` cycle them, `1`, `2` and `3` jump straight to one:
+Run `agent-warmup` with no arguments. Three tabs — `tab` / `shift+tab` cycle
+them, `1`/`2`/`3` jump straight to one:
 
-| Tab          | What it holds                                                                                        |
-| ------------ | ---------------------------------------------------------------------------------------------------- |
-| **Overview** | Scheduler state, next run, the active window, the last tick and one usage line per agent             |
-| **Agents**   | The agent picker plus the selected agent's model, binary path and tmux session, with its usage       |
-| **Schedule** | Mode, scheduler and tick, plus the default agent's hours: the smart-mode band or the fixed hour grid |
+| Tab          | What it holds                                                        |
+| ------------ | -------------------------------------------------------------------- |
+| **Overview** | Scheduler state, next run, last tick, one usage line per agent       |
+| **Agents**   | Enable agents and set each one's model, binary path and tmux session |
+| **Schedule** | Smart/fixed mode, scheduler backend and the default agent's hours    |
 
-Every agent keeps its own model, binary path and tmux session. On the Agents tab
-the settings card below the list is bound to the agent under the cursor — its id
-is in the card title (`SETTINGS · codex`) — so configuring an agent never
-requires enabling or selecting it first:
+On the **Agents** tab, `↑/↓` walk the list, `space` enables the agent under the
+cursor, `enter` opens its settings, `←/→` cycle the model and `d` autodetects
+its binary. The `*` marks the default agent — the one CLI commands use without
+`--provider` — and `p` cycles it.
 
-- `↑/↓` walk the agent list (focus only leaves the list at either end).
-- `space` enables or disables the agent under the cursor.
-- `enter` jumps into that agent's settings; `↑` returns to the list.
-- `←/→` cycle the model, `enter` edits the binary path or session name by hand.
-- `d` autodetects the binary of the agent on screen.
-
-The `Binary` row shows the configured path with a `✓`/`✗` marker for whether it
-actually works. `Run warmup (all enabled)` (`r`) warms every enabled agent at
-once — the same set `Save & apply` schedules — and prints a ✓/✗ line per agent
-when they are all done. The `*` in the list marks the default agent: the one CLI
-commands run without `--provider`, and the one whose hours the Schedule tab edits
-(its id is in the `HOURS · claude` card title); `p` cycles it.
-
-The action keys sit on the last line of the panel and work from every tab: `s`
-save & apply, `r` run a warmup now, `t` stop the schedulers, `l` view logs, `m`
-toggle smart/fixed, `p` cycle the enabled agents, `?` the full key map, `q` quit.
-Every change is written to disk at once; the status line reminds you to press `s`
-until the scheduler has been re-installed with it.
+Action keys work from any tab: `s` save & apply, `r` run a warmup now, `t` stop
+the schedulers, `l` logs, `m` toggle smart/fixed, `?` full key map, `q` quit.
+Changes are saved immediately, but the scheduler is only updated when you
+press `s`.
 
 ## Commands
 
@@ -164,109 +75,26 @@ until the scheduler has been re-installed with it.
 agent-warmup                         Open the interactive TUI
 agent-warmup status                  Show scheduler and provider status
 agent-warmup usage [--provider ID]   Probe usage or show the local estimate
-agent-warmup tick [--dry-run] [--provider ID]
 agent-warmup run [--provider ID]     Warm every enabled agent now (or just one)
-agent-warmup start|stop|restart      Manage launchd/cron
+agent-warmup start|stop|restart      Manage the scheduler
+agent-warmup logs [-f]               Tail the warmup log
+agent-warmup detect [--apply]        Find installed agent CLIs
 agent-warmup mode smart|fixed
 agent-warmup scheduler launchd|cron
-agent-warmup detect [--apply]        Find installed agent CLIs
 agent-warmup provider list
 agent-warmup provider ID enable|disable|select
-agent-warmup provider ID detect      Detect and save this agent's binary path
 agent-warmup provider ID model NAME
 agent-warmup provider ID binary PATH
 agent-warmup provider ID schedule H ...
-agent-warmup logs [-f]
+agent-warmup tick [--dry-run] [--provider ID]
 ```
 
-## Finding the agent binaries
+## Docs
 
-`agent-warmup detect` looks for each agent's CLI in its default install prefix,
-then on `$PATH`, then in the usual prefixes (`~/.local/bin`, `~/.bun/bin`,
-`/opt/homebrew/bin`, …). A configured path that still works is never replaced.
-`--apply` writes the absolute detected path for every agent whose configured
-path is missing, which is what the launchd/cron tick needs: the scheduler runs
-with a minimal `PATH`, so a bare command name is not enough.
-
-## Scheduling modes
-
-`smart` mode checks every 30 minutes inside the union of all enabled providers'
-working bands. Each provider independently skips when it is outside its band,
-over its weekly threshold, already active, or cooling down after repeated
-failures. Claude and OpenCode Go use live data where available; the other
-providers use local successful-arm history.
-
-`fixed` mode runs only at each provider's configured hours. A single launchd or
-cron entry contains the union of those hours; the tick only arms providers whose
-own schedule matches the current hour.
-
-Providers are probed and armed concurrently, both by the tick and by `run`. Each
-has its own cache entry and decision, so a slow or failing provider never delays
-or cancels another; an arm that is still running after five minutes is killed.
-Arm output is prefixed with the agent id, and `run` ends with a per-agent ✓/✗
-summary. In `warmup.log` every line carries its agent (`TICK [codex] …`,
-`START codex …`, `OK: OpenAI Codex replied …`).
-
-Two failed arms within two hours (two consecutive failing ticks at any cadence)
-put cache-based providers into a one-hour cooldown. This prevents an expired
-login or missing binary from being retried on every scheduler tick.
-
-## Configuration and files
-
-Everything lives under `~/.agent-warmup/`: `warmup.env`, the usage cache, logs
-and the sterile warmup workdir — a neutral home, nothing under any one agent's
-dot-dir. A legacy `~/.claude/warmup/` install is moved there the first time the
-CLI runs, and an installed scheduler entry still logging to the old path is
-re-applied the next time you open the TUI or run `status`. Set `WARMUP_HOME` to
-override.
-
-Configuration is a plain `.env` file:
-
-```dotenv
-WARMUP_MODE=smart
-WARMUP_SCHEDULER=launchd
-WARMUP_TICK_MINUTES=30
-WARMUP_PROVIDERS=claude,codex,kimi
-WARMUP_SELECTED_PROVIDER=codex
-
-WARMUP_CODEX_ENABLED=true
-WARMUP_CODEX_BIN=~/.local/bin/codex
-WARMUP_CODEX_MODEL=gpt-5.6-luna
-WARMUP_CODEX_WORK_START=8
-WARMUP_CODEX_WORK_END=23
-WARMUP_CODEX_WEEKLY_STOP_PERCENT=85
-WARMUP_CODEX_SCHEDULE=8,13,18
-```
-
-See [`.env.example`](.env.example) for all provider stanzas. Legacy flat
-`WARMUP_MODEL`, `WARMUP_SCHEDULE` and smart-mode keys migrate to the Claude
-provider on first save, with a `.bak` copy kept beside the old config.
-
-## Safety and quota semantics
-
-A warmup is a real billable/subscription request, including pulse-only adapters.
-Enable only plans whose reset timing you intentionally want to align. Provider
-limits and model catalogs change over time, so model IDs and binary paths remain
-configurable instead of being baked into the scheduler.
-
-The warmup workdir contains no project code. Codex runs ephemeral and read-only;
-Kimi loads an empty skills directory; Claude starts in safe mode. Logs and output
-captures are retained for 14 days by default.
-
-## Releasing
-
-Push a version tag. GitHub Actions builds the four SEA binaries, attaches
-them to the GitHub Release for that tag, and uploads `install.sh` so the
-curl installer can fetch that release:
-
-```bash
-git tag v1.2.3
-git push origin v1.2.3
-```
-
-Tags with a hyphen (`v1.2.3-rc.1`) are published as GitHub prereleases.
-`workflow_dispatch` on `.github/workflows/release.yml` smoke-tests the same
-matrix without publishing.
+- [Supported providers](docs/providers.md) — what each adapter runs and how its quota is read
+- [Scheduling](docs/scheduling.md) — smart vs fixed mode, cooldowns, binary detection
+- [Configuration](docs/configuration.md) — files under `~/.agent-warmup/` and every setting
+- [Development](docs/development.md) — build from source, tests, releases
 
 ## License
 
