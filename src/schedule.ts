@@ -1,4 +1,5 @@
 import { ensureArmScript } from './assets.js';
+import { loadConfig } from './config.js';
 import * as cron from './cron.js';
 // High-level scheduling: apply/stop the active scheduler, keeping the other off.
 import * as launchd from './launchd.js';
@@ -15,6 +16,14 @@ export function applySchedule(multi: MultiConfig): boolean {
   }
   cron.remove();
   return launchd.apply(multi);
+}
+
+// After the home dir moved, an installed scheduler entry keeps logging to the old
+// path until it is re-applied. Called from the status-reading entry points (TUI,
+// `status`) — never from the tick itself, since reloading the launchd job from
+// inside the job would kill it.
+export function repairStaleEntry(): void {
+  if (launchd.stale() || cron.stale()) applySchedule(loadConfig());
 }
 
 export function stopSchedule(): void {

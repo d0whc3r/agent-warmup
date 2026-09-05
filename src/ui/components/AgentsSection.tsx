@@ -25,7 +25,7 @@ export function AgentsSection({
   cursor: number;
 }) {
   return (
-    <Card title="AGENTS" hint="space on/off · enter edit" active={focused}>
+    <Card title="AGENTS" hint="* = default · p cycles" active={focused}>
       {ids.map((id, i) => {
         const provider = config.providers[id];
         if (!provider) return null;

@@ -1,14 +1,13 @@
 // The overview tab: everything you would otherwise have to read three screens (or
 // run `agent-warmup status`) to learn — is the scheduler live, when does it fire
-// next, and where does every agent stand. Nothing here is editable; the tab's
-// focusable rows are the actions, which live beside it.
+// next, and where does every agent stand. Nothing here is editable; the actions are
+// the global keys in the status-bar legend.
 import { Box, Text } from 'ink';
 
 import { ago, pad2 } from '../../format.js';
 import { minutesSince } from '../../time.js';
 import type { Config, MultiConfig, ProviderCache, ProviderId, Status } from '../../types.js';
-import { LABEL_W } from '../model.js';
-import { Card, SettingRow } from './primitives.jsx';
+import { Card, SettingRow, Split } from './primitives.jsx';
 
 const ID_W = 10;
 // The status labels are one word each, so they get a tighter column than the setting
@@ -36,11 +35,11 @@ function schedulerValue(status: Status, view: Config): string {
   return `cron · ${state}${status.cron.installed ? '' : ' · not installed'}`;
 }
 
-// The band (smart) or the union of every enabled agent's hours (fixed) — the part of
-// the schedule the "next run" line doesn't already say.
+// The mode plus the window it defines: the band (smart) or the union of every
+// enabled agent's hours (fixed) — the part of the schedule "next run" doesn't say.
 function windowValue(config: MultiConfig, ids: readonly ProviderId[], view: Config): string {
   if (view.mode === 'smart') {
-    return `${pad2(view.smart.workStart)}–${pad2(view.smart.workEnd)}h · stop at ${view.smart.weeklyStopPercent}% weekly`;
+    return `smart · ${pad2(view.smart.workStart)}–${pad2(view.smart.workEnd)}h · weekly stop ${view.smart.weeklyStopPercent}%`;
   }
   const hours = [
     ...new Set(
@@ -49,11 +48,11 @@ function windowValue(config: MultiConfig, ids: readonly ProviderId[], view: Conf
         .flatMap((id) => config.providers[id]!.schedule),
     ),
   ].sort((a, b) => a - b);
-  return hours.length ? hours.map((h) => `${pad2(h)}:00`).join(' ') : 'no hours selected';
+  return `fixed · ${hours.length ? hours.map((h) => `${pad2(h)}:00`).join(' ') : 'no hours selected'}`;
 }
 
 // The last tick line, minus the log timestamp and the trailing source tag: what
-// happened, not when it was written (the AGENTS block below carries the age).
+// happened, not when it was written (the AGENTS card below carries the age).
 function lastRunValue(lastRun: string): string {
   return lastRun
     .replace(/^\[[^\]]*\]\s*/, '')
@@ -61,7 +60,7 @@ function lastRunValue(lastRun: string): string {
     .trim();
 }
 
-export function OverviewSection({
+function StatusCard({
   config,
   status,
   ids,
@@ -71,87 +70,97 @@ export function OverviewSection({
   ids: readonly ProviderId[];
 }) {
   const view = status.view;
-  const enabled = ids.filter((id) => config.providers[id]?.enabled).length;
+  const rows: [string, string][] = [
+    ['Scheduler', schedulerValue(status, view)],
+    ['Next run', status.nextRun ?? 'not scheduled'],
+    ['Window', windowValue(config, ids, view)],
+  ];
+  if (status.lastRun) rows.push(['Last run', lastRunValue(status.lastRun)]);
   return (
-    <>
-      <Card title="STATUS">
+    <Card title="STATUS">
+      {rows.map(([label, value]) => (
         <SettingRow
+          key={label}
           labelWidth={STATUS_LABEL_W}
           focused={false}
-          label="Scheduler"
-          ariaValue={schedulerValue(status, view)}
+          label={label}
+          ariaValue={value}
         >
-          <Text>{schedulerValue(status, view)}</Text>
+          <Text>{value}</Text>
         </SettingRow>
-        <SettingRow
-          labelWidth={STATUS_LABEL_W}
-          focused={false}
-          label="Next run"
-          ariaValue={status.nextRun ?? 'not scheduled'}
-        >
-          <Text>{status.nextRun ?? 'not scheduled'}</Text>
-        </SettingRow>
-        <SettingRow labelWidth={STATUS_LABEL_W} focused={false} label="Mode" ariaValue={view.mode}>
-          <Text>{view.mode}</Text>
-        </SettingRow>
-        <SettingRow
-          labelWidth={STATUS_LABEL_W}
-          focused={false}
-          label="Window"
-          ariaValue={windowValue(config, ids, view)}
-        >
-          <Text>{windowValue(config, ids, view)}</Text>
-        </SettingRow>
-        <SettingRow
-          labelWidth={STATUS_LABEL_W}
-          focused={false}
-          label="Agents"
-          ariaValue={`${enabled} of ${ids.length} enabled`}
-        >
-          <Text>{`${enabled} of ${ids.length} enabled`}</Text>
-        </SettingRow>
-        {status.lastRun ? (
-          <Box flexDirection="column" aria-label={`Last run: ${lastRunValue(status.lastRun)}`}>
-            <Box aria-hidden>
-              <Text>{'  '}</Text>
-              <Text>Last run</Text>
-            </Box>
-            <Box aria-hidden paddingLeft={4}>
-              <Text dimColor>{lastRunValue(status.lastRun)}</Text>
-            </Box>
-          </Box>
-        ) : null}
-      </Card>
+      ))}
+    </Card>
+  );
+}
 
-      <Card title="AGENTS">
-        {ids.map((id) => {
-          const provider = config.providers[id];
-          if (!provider) return null;
-          const cache = status.usage?.providers?.[id] ?? null;
-          const selected = config.shared.selectedProvider === id;
-          const usage = usageLine(cache);
-          const age = minutesSince(cache?.capturedAt);
-          const state = `${provider.enabled ? 'enabled' : 'disabled'}${selected ? ', selected' : ''}`;
+// One agent per entry: enabled agents get their model and a usage line, disabled
+// ones collapse to a single dimmed row so the list stays short with six agents.
+function AgentsCard({
+  config,
+  status,
+  ids,
+}: {
+  config: MultiConfig;
+  status: Status;
+  ids: readonly ProviderId[];
+}) {
+  return (
+    <Card title="AGENTS" hint="* = default">
+      {ids.map((id) => {
+        const provider = config.providers[id];
+        if (!provider) return null;
+        const selected = config.shared.selectedProvider === id;
+        const name = (selected ? `${id}*` : id).padEnd(ID_W);
+        const state = `${provider.enabled ? 'enabled' : 'disabled'}${selected ? ', selected' : ''}`;
+        if (!provider.enabled) {
           return (
-            <Box key={id} flexDirection="column">
-              <Box aria-label={`${id}: ${state}, model ${provider.model}, ${usage}`}>
-                <Box aria-hidden flexShrink={0}>
-                  <Text bold={provider.enabled} color={provider.enabled ? 'green' : 'gray'}>
-                    {provider.enabled ? '● ' : '○ '}
-                  </Text>
-                  <Text bold={selected}>{(selected ? `${id}*` : id).padEnd(ID_W)}</Text>
-                </Box>
-                <Text aria-hidden dimColor>
-                  {provider.model}
-                </Text>
-              </Box>
-              <Box aria-hidden paddingLeft={LABEL_W - 9}>
-                <Text dimColor>{age != null ? `${usage} · ${ago(age)}` : usage}</Text>
-              </Box>
+            <Box key={id} aria-label={`${id}: ${state}`}>
+              <Text aria-hidden dimColor>{`○ ${name}disabled`}</Text>
             </Box>
           );
-        })}
-      </Card>
-    </>
+        }
+        const cache = status.usage?.providers?.[id] ?? null;
+        const usage = usageLine(cache);
+        const age = minutesSince(cache?.capturedAt);
+        return (
+          <Box
+            key={id}
+            flexDirection="column"
+            aria-label={`${id}: ${state}, model ${provider.model}, ${usage}`}
+          >
+            <Box aria-hidden>
+              <Text bold color="green">
+                {'● '}
+              </Text>
+              <Text bold={selected}>{name}</Text>
+              <Text dimColor>{provider.model}</Text>
+            </Box>
+            <Box aria-hidden paddingLeft={2}>
+              <Text dimColor>{age != null ? `${usage} · ${ago(age)}` : usage}</Text>
+            </Box>
+          </Box>
+        );
+      })}
+    </Card>
+  );
+}
+
+export function OverviewSection({
+  config,
+  status,
+  ids,
+  wide,
+}: {
+  config: MultiConfig;
+  status: Status;
+  ids: readonly ProviderId[];
+  wide: boolean;
+}) {
+  return (
+    <Split
+      wide={wide}
+      left={<StatusCard config={config} status={status} ids={ids} />}
+      right={<AgentsCard config={config} status={status} ids={ids} />}
+    />
   );
 }

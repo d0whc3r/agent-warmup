@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 // The legacy usage.ts/decide.ts code is inlined here per spec section 11/12; their
 // tests import from this module via the same exported names.
 import fs from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import { ARM_SCRIPT, ARM_SCRIPT_SRC, TMUX_BIN, WARMUP_WORKDIR, expandHome } from '../paths.js';
 import {
@@ -19,7 +20,9 @@ import {
 import type { Decision, LimitBlock, ProviderCache, ProviderUsage } from '../types.js';
 import type { ProbeContext, Provider } from './types.js';
 
-const wait = (sec: number) => spawnSync('sleep', [String(sec)]);
+// Async on purpose: the tick probes all providers at once, and this probe sleeps
+// ~20s driving the TUI, which must not block the others.
+const wait = (sec: number) => sleep(sec * 1000);
 const tmux = (args: string[]) => spawnSync(TMUX_BIN, args, { encoding: 'utf8' });
 
 function isExecutable(p: string): boolean {
@@ -58,7 +61,7 @@ export function parseUsage(text: string, now: Date = new Date()): ProviderUsage 
 
 // Read Claude's three limit blocks by driving `/usage` in a throwaway tmux session
 // and parsing the rendered pane. Returns null on any failure.
-export function probe(ctx: ProbeContext): ProviderUsage | null {
+export async function probe(ctx: ProbeContext): Promise<ProviderUsage | null> {
   // Honor the per-provider binary path the user set in WARMUP_CLAUDE_BIN (the
   // legacy `CLAUDE_BIN` env var still works for the arm script's own fallback,
   // but the probe should always read the provider config so a custom install
@@ -88,17 +91,23 @@ export function probe(ctx: ProbeContext): ProviderUsage | null {
       ctx.cfg.model,
     ]);
     if (started.status !== 0) return null;
-    wait(readyWait);
+    await wait(readyWait);
     const pane = () => tmux(['capture-pane', '-p', '-t', session]).stdout || '';
-    if (/trust this folder|do you trust|project you (created|trust)/i.test(pane())) {
-      tmux(['send-keys', '-t', session, '1']);
+    const shown = pane();
+    if (/trust this folder|do you trust|project you (created|trust)/i.test(shown)) {
+      // Two layouts: the numbered list ("1. Yes, proceed") takes the digit; the
+      // cursor list (Claude Code ≥ 2.1.2xx) highlights "No, exit" first, so Down
+      // moves onto "Yes, I trust this folder" before Enter confirms.
+      if (/Yes, I trust this folder/.test(shown)) tmux(['send-keys', '-t', session, 'Down']);
+      else tmux(['send-keys', '-t', session, '1']);
+      await wait(0.5);
       tmux(['send-keys', '-t', session, 'Enter']);
-      wait(4);
+      await wait(4);
     }
     tmux(['send-keys', '-t', session, '-l', '/usage']);
-    wait(1);
+    await wait(1);
     tmux(['send-keys', '-t', session, 'Enter']);
-    wait(responseWait);
+    await wait(responseWait);
     const text = tmux(['capture-pane', '-p', '-t', session, '-S', '-200']).stdout || '';
     const usage = parseUsage(text, ctx.now);
     if (!usage.session && !usage.week) return null;

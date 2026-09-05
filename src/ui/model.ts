@@ -18,10 +18,10 @@ export const WIDE_MAX = 104;
 // Label column width, so every "Label   value" pair aligns its value into one column.
 export const LABEL_W = 13;
 
-// The movement keys never change; each row appends its own action keys via Row.hint.
-// Spelling the keys out per row (instead of one static legend) is the accessibility
-// win: the user is always told exactly what the focused control responds to.
-export const MOVE_HINT = '↑/↓ move · tab switches';
+// The global action keys, pinned to the last status-bar line on every tab so the panel
+// is never more than one keystroke away from saving. The controller handles them
+// before navigation; the "?" overlay spells each one out in full.
+export const LEGEND = 's save · r run · t stop · l logs · ? help · q quit';
 
 // The panel is split into tabs so each concern gets its own screen instead of a
 // column of loose cards: what is going on (overview), which agent to warm and how
@@ -41,49 +41,14 @@ export const TABS: readonly TabDef[] = [
 ];
 
 // The kind of interaction a focusable row supports.
-type RowType = 'choice' | 'text' | 'schedule' | 'action' | 'agents';
+type RowType = 'choice' | 'text' | 'schedule' | 'agents';
 
 export interface Row {
   key: string;
   type: RowType;
   label: string;
   hint: string; // contextual keys, shown in the status bar while this row is focused
-  accel?: string; // single-key accelerator; underlined in its label (action rows only)
 }
-
-// The action rows live on the overview tab, but their single-key accelerators fire
-// from every tab, so the panel is never more than one keystroke away from saving.
-const ACTION_ROWS: Row[] = [
-  {
-    key: 'save',
-    type: 'action',
-    label: 'Save & apply',
-    accel: 's',
-    hint: 'enter or s to save & apply the config',
-  },
-  {
-    key: 'run',
-    type: 'action',
-    label: 'Run warmup (all enabled)',
-    accel: 'r',
-    hint: 'enter or r to warm every enabled agent now',
-  },
-  {
-    key: 'stop',
-    type: 'action',
-    label: 'Stop (remove schedulers)',
-    accel: 't',
-    hint: 'enter or t to remove all schedulers',
-  },
-  {
-    key: 'logs',
-    type: 'action',
-    label: 'View logs',
-    accel: 'l',
-    hint: 'enter or l to view the logs',
-  },
-  { key: 'quit', type: 'action', label: 'Quit', accel: 'q', hint: 'enter or q to quit' },
-];
 
 // The agents tab: pick the agent, then edit what the warmup needs to reach it.
 const AGENT_ROWS: Row[] = [
@@ -91,38 +56,39 @@ const AGENT_ROWS: Row[] = [
     key: 'agents',
     type: 'agents',
     label: 'Agent',
-    hint: '↑/↓ pick · space enable/disable · enter edit · d detect',
+    hint: '↑↓ pick · space on/off · enter edit · d detect',
   },
-  { key: 'model', type: 'choice', label: 'Model', hint: '←/→ cycle model' },
-  {
-    key: 'binary',
-    type: 'text',
-    label: 'Binary',
-    hint: 'enter to edit the path · d to autodetect',
-  },
-  { key: 'tmux', type: 'text', label: 'tmux session', hint: 'enter to rename the session' },
+  { key: 'model', type: 'choice', label: 'Model', hint: '←→ cycle model' },
+  { key: 'binary', type: 'text', label: 'Binary', hint: 'enter edit path · d autodetect' },
+  { key: 'tmux', type: 'text', label: 'tmux session', hint: 'enter rename' },
 ];
 
 // The schedule tab is mode-dependent: smart mode exposes its tunables as editable
-// rows; fixed mode shows the togglable hour grid instead.
+// rows; fixed mode shows the togglable hour grid instead. Mode, scheduler and tick
+// are shared by every agent; the hours belong to the default agent (p switches it).
 const scheduleRows = (mode: Mode): Row[] => [
-  { key: 'mode', type: 'choice', label: 'Mode', hint: '←/→ switch smart / fixed' },
-  { key: 'scheduler', type: 'choice', label: 'Scheduler', hint: '←/→ switch scheduler' },
+  { key: 'mode', type: 'choice', label: 'Mode', hint: '←→ smart / fixed' },
+  { key: 'scheduler', type: 'choice', label: 'Scheduler', hint: '←→ switch scheduler' },
   ...(mode === 'smart'
     ? [
+        { key: 'tick', type: 'choice' as const, label: 'Tick', hint: '←→ probe cadence' },
         {
           key: 'workStart',
           type: 'choice' as const,
           label: 'Work start',
-          hint: '←/→ adjust start hour',
+          hint: '←→ adjust · p switch agent',
         },
-        { key: 'workEnd', type: 'choice' as const, label: 'Work end', hint: '←/→ adjust end hour' },
-        { key: 'tick', type: 'choice' as const, label: 'Tick', hint: '←/→ change probe cadence' },
+        {
+          key: 'workEnd',
+          type: 'choice' as const,
+          label: 'Work end',
+          hint: '←→ adjust · p switch agent',
+        },
         {
           key: 'weeklyStop',
           type: 'choice' as const,
           label: 'Weekly stop',
-          hint: '←/→ adjust weekly cutoff',
+          hint: '←→ adjust · p switch agent',
         },
       ]
     : [
@@ -130,21 +96,18 @@ const scheduleRows = (mode: Mode): Row[] => [
           key: 'schedule',
           type: 'schedule' as const,
           label: 'Hours',
-          hint: '←/→ move cursor · space toggles the hour',
+          hint: '←→ hour · space toggle · p switch agent',
         },
       ]),
 ];
 
-// Array order = focus order (top→bottom) within the active tab.
+// Array order = focus order (top→bottom) within the active tab. The overview is
+// read-only, so it has no rows: its actions are the global keys in the legend.
 export const buildRows = (mode: Mode, tab: TabKey = 'overview'): Row[] => {
   if (tab === 'agents') return [...AGENT_ROWS];
   if (tab === 'schedule') return scheduleRows(mode);
-  return [...ACTION_ROWS];
+  return [];
 };
-
-// Every action row, whatever tab is showing — the accelerators are global, so the
-// help overlay and the accelerator test read from here rather than from a tab.
-export const ACTIONS: readonly Row[] = ACTION_ROWS;
 
 // How many hour cells fit per row for a given usable content width. Each cell is 4
 // columns ("[08]" or " 08 "). Clamped to [4,12] so the grid never gets unreadably
@@ -173,13 +136,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { keys: '↑/↓', label: 'Move between rows (or agents)' },
   { keys: '←/→', label: 'Change the focused setting' },
   { keys: 'space', label: 'Toggle an hour / enable an agent' },
-  { keys: 'enter', label: 'Activate row / edit the agent / edit text' },
+  { keys: 'enter', label: 'Open the agent under the cursor / edit text' },
   { keys: 's', label: 'Save & apply' },
   { keys: 'r', label: 'Warm every enabled agent now' },
   { keys: 't', label: 'Stop (remove schedulers)' },
   { keys: 'l', label: 'View logs' },
   { keys: 'm', label: 'Toggle smart / fixed mode' },
-  { keys: 'p', label: 'Cycle the default agent for CLI runs' },
+  { keys: 'p', label: 'Cycle the default agent (CLI runs, schedule hours)' },
   { keys: 'd', label: 'Detect the agent binary path' },
   { keys: '?', label: 'Toggle this help' },
   { keys: 'q', label: 'Quit' },

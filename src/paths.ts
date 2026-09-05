@@ -23,13 +23,21 @@ const REPO_ROOT = path.resolve(SRC_DIR, '..');
 
 // Single home for everything the warmup owns — logs, config, cache and the tmux
 // workdir all live here, so the footprint is one self-contained, age-managed dir.
+// Provider-neutral on purpose: the tool warms several agents, so nothing of its own
+// lives under any one agent's dot-dir. WARMUP_HOME always wins when explicitly set.
 const GENERIC_HOME = path.join(HOME, '.agent-warmup');
-const LEGACY_HOME = path.join(HOME, '.claude', 'warmup');
-// Existing installs keep using their old home automatically. New installs get
-// a provider-neutral location; WARMUP_HOME always wins when explicitly set.
-export const WARMUP_HOME =
-  process.env.WARMUP_HOME ||
-  (!fs.existsSync(GENERIC_HOME) && fs.existsSync(LEGACY_HOME) ? LEGACY_HOME : GENERIC_HOME);
+export const LEGACY_HOME = path.join(HOME, '.claude', 'warmup');
+export const WARMUP_HOME = process.env.WARMUP_HOME || GENERIC_HOME;
+
+// One-shot move of a pre-rename install (~/.claude/warmup) into the neutral home.
+// Runs at CLI startup; a no-op once the new home exists or WARMUP_HOME is set.
+export function migrateLegacyHome(): boolean {
+  if (process.env.WARMUP_HOME || fs.existsSync(GENERIC_HOME) || !fs.existsSync(LEGACY_HOME)) {
+    return false;
+  }
+  fs.renameSync(LEGACY_HOME, GENERIC_HOME);
+  return true;
+}
 
 // The CLI entry node is currently executing: the bundled bin (dist/agent-warmup.mjs)
 // when installed, or src/cli.js under tsx / the global shim in dev. Resolved to an
@@ -40,9 +48,16 @@ const CLI_ENTRY = path.resolve(process.argv[1] ?? path.join(SRC_DIR, 'cli.js'));
 // The node binary running this process — embedded in the smart-mode plist/cron so
 // the scheduler can invoke the tick without relying on a login PATH.
 const NODE_BIN = process.execPath;
-// How a scheduler entry re-invokes this CLI headlessly: `node <entry> …` in dev/npm,
-// or just the executable itself when packaged (it is its own entry point).
-export const SELF_INVOCATION = IN_SEA ? [process.execPath] : [NODE_BIN, CLI_ENTRY];
+// How a scheduler entry re-invokes this CLI headlessly: the executable itself when
+// packaged (it is its own entry point), `node <entry>` for the npm bundle, and
+// `node --import <tsx loader> <entry>` when running from source under tsx — plain
+// node cannot load a .ts entry, so a plist made from `pnpm dev` would fail silently.
+const DEV_TS = !IN_SEA && /\.tsx?$/.test(CLI_ENTRY);
+export const SELF_INVOCATION = IN_SEA
+  ? [process.execPath]
+  : DEV_TS
+    ? [NODE_BIN, '--import', fileURLToPath(import.meta.resolve('tsx')), CLI_ENTRY]
+    : [NODE_BIN, CLI_ENTRY];
 
 // Tiny `~` expander for paths the user wrote in the env ("~/.local/bin/claude").
 // Doesn't go through $HOME-aware expansion because the env files are edited by hand
@@ -98,7 +113,6 @@ export const WARMUP_LOG = path.join(LOG_DIR, 'warmup.log');
 export const CRON_LOG = path.join(LOG_DIR, 'cron.log');
 export const CONFIG_PATH = path.join(WARMUP_HOME, 'warmup.env');
 
-// Backward-compat: the legacy `~/.claude/warmup/usage-cache.json` path. New code
-// reads the per-provider cache from the same file; the on-disk format is just a
-// shape change (flat → { providers: { <id>: snapshot } }), not a path change.
+// Per-provider usage cache ({ providers: { <id>: snapshot } }); the pre-multi-provider
+// flat shape is migrated on read.
 export const USAGE_CACHE = path.join(WARMUP_HOME, 'usage-cache.json');

@@ -31,8 +31,10 @@ export interface Provider {
   readonly modelChoices: readonly string[];
   readonly probeKind: 'live' | 'estimated';
   // Read the provider's current usage. Returns null on transient failure — the
-  // caller falls back to inferFromCache. Pure text in / structured out.
-  probe(ctx: ProbeContext): ProviderUsage | null;
+  // caller falls back to inferFromCache. May be async: the tick probes every
+  // provider at once, so a slow probe (Claude drives a tmux session for ~20s) must
+  // not block the others.
+  probe(ctx: ProbeContext): ProviderUsage | null | Promise<ProviderUsage | null>;
   // Produce the provider's best estimate when no live quota endpoint exists or
   // a probe fails. Most subscription plans use the last successful arm time.
   inferFromCache(ctx: ProbeContext, cache: ProviderCache | null): ProviderUsage;

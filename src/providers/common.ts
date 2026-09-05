@@ -3,7 +3,10 @@ import type { Decision, ProviderCache, ProviderUsage } from '../types.js';
 import type { ProbeContext } from './types.js';
 
 export const DEFAULT_WINDOW_MS = 5 * 60 * 60 * 1000;
-const FAILURE_WINDOW_MS = 30 * 60 * 1000;
+// Two failures inside this window trip the breaker. Wider than the slowest tick
+// cadence (60m) so two consecutive failing ticks always count as a pair; at 30m it
+// was a coin flip whether a 30m-cadence tick landed inside or just outside it.
+const FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const COOLDOWN_MS = 60 * 60 * 1000;
 
 export function inferWindowFromCache(
@@ -76,7 +79,7 @@ export function recordArmWithCooldown(
     delete next.lastFailureAt;
     return {
       cache: next,
-      log: 'cooldown set (1h after 2 failures in 30m)',
+      log: 'cooldown set (1h after 2 failures in 2h)',
     };
   }
   return { cache: { ...cache, lastFailureAt: now.getTime() } };

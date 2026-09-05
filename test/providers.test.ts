@@ -54,6 +54,15 @@ test('two close arm failures trigger a one-hour cooldown', () => {
   assert.equal(second.cache.cooldownUntil, now.getTime() + 65 * 60_000);
 });
 
+test('two failures one tick apart still trip the cooldown at every tick cadence', () => {
+  // Ticks run every 5..60 minutes; a failure on each of two consecutive ticks must
+  // count as a pair, so the failure window has to exceed the slowest cadence.
+  const now = new Date('2026-09-04T10:00:00Z');
+  const first = recordArmWithCooldown({}, 1, now);
+  const second = recordArmWithCooldown(first.cache, 1, new Date(now.getTime() + 61 * 60_000));
+  assert.match(second.log ?? '', /cooldown set/);
+});
+
 test('fixed mode only warms a provider at its own scheduled hour', () => {
   const provider = getProvider('kimi');
   const cfg = { ...DEFAULT_MULTI.providers.kimi!, schedule: [8, 13, 18] };

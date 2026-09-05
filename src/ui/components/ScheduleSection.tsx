@@ -1,21 +1,23 @@
-// The schedule block is mode-dependent. Both modes expose a TEXT summary that is the
-// accessible source of truth (read by everyone and by screen readers); the glyph art
-// — the smart-mode band bar and the fixed-mode hour grid — is aria-hidden, so the
-// screen reader hears the summary instead of a wall of block characters.
+// The schedule tab is two cards. SCHEDULE holds what every agent shares (mode,
+// scheduler, tick); HOURS · <agent> holds the default agent's own window, because
+// work hours and the fixed-mode grid are per agent — naming the agent in the title
+// is what tells you whose hours you are editing (p switches it). Both modes expose
+// a TEXT summary that is the accessible source of truth; the glyph art — the
+// smart-mode band bar and the fixed-mode hour grid — is aria-hidden, so the screen
+// reader hears the summary instead of a wall of block characters.
 import { Box, Text } from 'ink';
 
 import { pad2 } from '../../format.js';
-import type { Config, SmartConfig } from '../../types.js';
+import type { Config, ProviderId, SmartConfig } from '../../types.js';
 import { AXIS, chunk, HOURS } from '../model.js';
-import { Card, Choice, Pointer, SettingRow } from './primitives.jsx';
+import { Card, Choice, Pointer, SettingRow, Split } from './primitives.jsx';
 
-const SMART_KEYS = ['mode', 'scheduler', 'workStart', 'workEnd', 'tick', 'weeklyStop'];
+const SHARED_KEYS = ['mode', 'scheduler', 'tick'];
+const HOURS_KEYS = ['workStart', 'workEnd', 'weeklyStop', 'schedule'];
 
-// Mode and scheduler head both variants of the card: they decide WHEN the tick runs,
-// which is what the rest of the card configures.
-function ModeRows({ config, focusedKey }: { config: Config; focusedKey: string }) {
+function SharedCard({ config, focusedKey }: { config: Config; focusedKey: string }) {
   return (
-    <>
+    <Card title="SCHEDULE" active={SHARED_KEYS.includes(focusedKey)}>
       <SettingRow focused={focusedKey === 'mode'} label="Mode" ariaValue={config.mode}>
         <Choice value={config.mode} focused={focusedKey === 'mode'} />
       </SettingRow>
@@ -26,7 +28,16 @@ function ModeRows({ config, focusedKey }: { config: Config; focusedKey: string }
       >
         <Choice value={config.scheduler} focused={focusedKey === 'scheduler'} />
       </SettingRow>
-    </>
+      {config.mode === 'smart' ? (
+        <SettingRow
+          focused={focusedKey === 'tick'}
+          label="Tick"
+          ariaValue={`${config.smart.tickMinutes} min`}
+        >
+          <Choice value={`${config.smart.tickMinutes}m`} focused={focusedKey === 'tick'} />
+        </SettingRow>
+      ) : null}
+    </Card>
   );
 }
 
@@ -85,21 +96,24 @@ function HourGrid({
   );
 }
 
-export function ScheduleSection({
+function HoursCard({
   config,
+  agentId,
   focusedKey,
   hourCursor,
   gridCols,
 }: {
   config: Config;
+  agentId: ProviderId;
   focusedKey: string;
   hourCursor: number;
   gridCols: number;
 }) {
+  const title = `HOURS · ${agentId}`;
+  const active = HOURS_KEYS.includes(focusedKey);
   if (config.mode === 'smart') {
     return (
-      <Card title="SCHEDULE" hint="usage-aware" active={SMART_KEYS.includes(focusedKey)}>
-        <ModeRows config={config} focusedKey={focusedKey} />
+      <Card title={title} hint="p switches agent" active={active}>
         <BandBar smart={config.smart} />
         <SettingRow
           focused={focusedKey === 'workStart'}
@@ -117,13 +131,6 @@ export function ScheduleSection({
           ariaValue={`${pad2(config.smart.workEnd)}:00`}
         >
           <Choice value={`${pad2(config.smart.workEnd)}:00`} focused={focusedKey === 'workEnd'} />
-        </SettingRow>
-        <SettingRow
-          focused={focusedKey === 'tick'}
-          label="Tick"
-          ariaValue={`${config.smart.tickMinutes} min`}
-        >
-          <Choice value={`${config.smart.tickMinutes}m`} focused={focusedKey === 'tick'} />
         </SettingRow>
         <SettingRow
           focused={focusedKey === 'weeklyStop'}
@@ -144,8 +151,7 @@ export function ScheduleSection({
     ? config.schedule.map((h) => `${pad2(h)}:00`).join(', ')
     : 'none (idle)';
   return (
-    <Card title="SCHEDULE" active={SMART_KEYS.includes(focusedKey) || focused}>
-      <ModeRows config={config} focusedKey={focusedKey} />
+    <Card title={title} hint="p switches agent" active={active}>
       <HourGrid
         schedule={config.schedule}
         focused={focused}
@@ -162,5 +168,37 @@ export function ScheduleSection({
         </Text>
       </Box>
     </Card>
+  );
+}
+
+export function ScheduleSection({
+  config,
+  agentId,
+  focusedKey,
+  hourCursor,
+  gridCols,
+  wide,
+}: {
+  config: Config;
+  agentId: ProviderId;
+  focusedKey: string;
+  hourCursor: number;
+  gridCols: number;
+  wide: boolean;
+}) {
+  return (
+    <Split
+      wide={wide}
+      left={<SharedCard config={config} focusedKey={focusedKey} />}
+      right={
+        <HoursCard
+          config={config}
+          agentId={agentId}
+          focusedKey={focusedKey}
+          hourCursor={hourCursor}
+          gridCols={gridCols}
+        />
+      }
+    />
   );
 }

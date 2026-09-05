@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { USAGE_CACHE } from './paths.js';
-import type { ProviderCache, UsageCache } from './types.js';
+import type { ProviderCache, ProviderId, UsageCache } from './types.js';
 
 // Read the on-disk cache. Migrates the LEGACY flat shape (session/week/... at
 // the top level) to the new per-provider map on first read.
@@ -39,4 +39,16 @@ export function readCache(): UsageCache {
 export function writeCache(cache: UsageCache): void {
   fs.mkdirSync(path.dirname(USAGE_CACHE), { recursive: true });
   fs.writeFileSync(USAGE_CACHE, JSON.stringify(cache, null, 2) + '\n');
+}
+
+// Read-patch-write one provider's entry. Providers run concurrently (parallel tick
+// and run), so every writer re-reads the file first instead of writing back an
+// in-memory copy that no longer has the other providers' latest entries.
+export function updateProviderCache(
+  id: ProviderId,
+  patch: (entry: ProviderCache) => ProviderCache,
+): void {
+  const cache = readCache();
+  cache.providers[id] = patch(cache.providers[id] ?? {});
+  writeCache(cache);
 }

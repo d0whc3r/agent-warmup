@@ -107,6 +107,16 @@ export function disable(): boolean {
   return launchctl(['disable', `${GUI_DOMAIN}/${LABEL}`]).status === 0;
 }
 
+// True when the loaded plist still logs somewhere other than LOG_DIR: the home dir
+// moved (legacy → generic) after the agent was installed.
+export function stale(): boolean {
+  try {
+    return !fs.readFileSync(PLIST_PATH, 'utf8').includes(LOG_DIR);
+  } catch {
+    return false; // not installed
+  }
+}
+
 export function status(): {
   installed: boolean;
   loaded: boolean;

@@ -1,32 +1,27 @@
-// Panel title plus the live status badge and a one-line subtitle. Multi-provider:
-// shows the selected provider id next to the title so the user always knows
-// which provider's settings they're editing.
+// One-line panel header: the title on the left, the live scheduler badge on the
+// right. The badge carries the next run so "is it on, and when does it fire?" is
+// answered from every tab without opening the overview. State is spelt out in
+// words + a filled/hollow dot, never colour alone.
 import { Box, Text } from 'ink';
 
-import type { MultiConfig, Status } from '../../types.js';
+import type { Status } from '../../types.js';
 
-export function Header({ config, status }: { config: MultiConfig; status: Status }) {
-  const sel = config.shared.selectedProvider;
-  const selProvider = config.providers[sel];
-  const subtitle = `${status.view.mode} mode · ${sel}${selProvider ? ` (${selProvider.model})` : ''}${status.nextRun ? ` · next run ${status.nextRun}` : ' · not scheduled'}`;
+export function Header({ status }: { status: Status }) {
+  const next = status.active ? status.nextRun : null;
   return (
-    <Box flexDirection="column">
-      <Box justifyContent="space-between">
-        <Text bold color="cyan">
-          agent-warmup
-          {config.shared.providers.length > 1
-            ? ` (${config.shared.providers.length} providers)`
-            : ''}
-        </Text>
-        <Text
-          bold
-          color={status.active ? 'green' : 'red'}
-          aria-label={status.active ? 'status: active' : 'status: inactive'}
-        >
-          {status.active ? '● ACTIVE' : '○ inactive'}
-        </Text>
-      </Box>
-      <Text dimColor>{subtitle}</Text>
+    <Box justifyContent="space-between">
+      <Text bold color="cyan">
+        agent-warmup
+      </Text>
+      <Text
+        bold
+        color={status.active ? 'green' : 'red'}
+        aria-label={
+          status.active ? `status: active${next ? `, next run ${next}` : ''}` : 'status: inactive'
+        }
+      >
+        {status.active ? `● ACTIVE${next ? ` · next ${next}` : ''}` : '○ inactive'}
+      </Text>
     </Box>
   );
 }

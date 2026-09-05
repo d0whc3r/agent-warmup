@@ -67,8 +67,18 @@ export function apply(multi: MultiConfig): boolean {
 }
 
 export function remove(): boolean {
-  const base = stripBlock(readCrontab());
+  const text = readCrontab();
+  // Nothing of ours installed: leave the user's crontab alone. Writing it needlessly
+  // is what triggers macOS's Full Disk Access prompt for `crontab -` on every apply.
+  if (!text.includes(BEGIN)) return true;
+  const base = stripBlock(text);
   return writeCrontab(base ? base + '\n' : '');
+}
+
+// True when our block still logs somewhere other than CRON_LOG (the home dir moved).
+export function stale(): boolean {
+  const text = readCrontab();
+  return text.includes(BEGIN) && !text.includes(CRON_LOG);
 }
 
 export function status(): { installed: boolean } {

@@ -9,7 +9,7 @@ import type { TabDef, TabKey } from '../model.js';
 
 export function TabBar({ tabs, active }: { tabs: readonly TabDef[]; active: TabKey }) {
   return (
-    <Box aria-role="tablist" flexWrap="wrap" marginTop={1}>
+    <Box aria-role="tablist" flexWrap="wrap">
       {tabs.map((tab) => {
         const on = tab.key === active;
         return (

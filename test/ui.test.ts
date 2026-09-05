@@ -15,7 +15,7 @@ import type { Config, MultiConfig, Status, UsageCache } from '../src/types.js';
 import App from '../src/ui/App.jsx';
 import { HelpOverlay } from '../src/ui/components/HelpOverlay.jsx';
 import { StatusBar } from '../src/ui/components/StatusBar.jsx';
-import { ACTIONS, buildRows, SHORTCUTS, TABS, type TabKey } from '../src/ui/model.js';
+import { buildRows, LEGEND, SHORTCUTS, TABS, type TabKey } from '../src/ui/model.js';
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 const stripAnsi = (s: string): string => s.replace(ANSI, '');
@@ -182,25 +182,24 @@ test('the tab bar marks the open tab without relying on colour', () => {
 test('the overview tab summarises the scheduler and every agent', () => {
   const f = frameOf(baseConfig, baseStatus, false);
   assert.match(f, /agent-warmup/);
-  assert.match(f, /● ACTIVE/);
+  assert.match(f, /● ACTIVE · next 13:00/, 'the header badge carries the next run');
   assert.match(f, /STATUS/);
   assert.match(f, /Scheduler\s+cron · active/);
   assert.match(f, /Next run\s+13:00/);
-  assert.match(f, /Agents\s+1 of 2 enabled/);
-  assert.match(f, /● claude\*/);
-  assert.match(f, /○ opencode/);
-  assert.match(f, /ACTIONS/);
-  assert.match(f, /▶ Save & apply/);
-  assert.match(f, /↑\/↓ move/);
+  assert.match(f, /Window\s+fixed · 08:00 13:00 18:00/);
+  assert.match(f, /● claude\*\s+haiku/);
+  assert.match(f, /○ opencode\s+disabled/, 'disabled agents collapse to one line');
+  assert.ok(f.includes(LEGEND), 'the action legend is pinned to the status bar');
   assert.match(f, /[╭╮╰╯]/);
+  assert.ok(f.split('\n').length <= 24, 'the overview fits an 80×24 terminal');
 });
 
 test('screen-reader mode emits clean linear text and hides glyph art', () => {
   const f = frameOf(baseConfig, baseStatus, true);
-  assert.match(f, /status: active/);
+  assert.match(f, /status: active, next run 13:00/);
   assert.match(f, /Scheduler: cron · active/);
   assert.match(f, /claude: enabled, selected, model haiku/);
-  assert.match(f, /button: \(selected\) Save & apply/);
+  assert.match(f, /opencode: disabled/);
   assert.ok(!f.includes('▶'), 'pointer glyph should be hidden from screen readers');
   assert.ok(!f.includes('●'), 'status dots should be hidden from screen readers');
   assert.ok(!/[╭╮╰╯│─]/.test(f), 'card borders must not reach screen readers');
@@ -227,8 +226,10 @@ test('the schedule tab shows the mode rows and the fixed-mode hour grid', () => 
   assert.match(f, /SCHEDULE/);
   assert.match(f, /▶ Mode/);
   assert.match(f, /Scheduler\s+cron/);
+  assert.match(f, /HOURS · claude/, 'the hours card names the agent it edits');
   assert.match(f, /\[08\]/);
   assert.match(f, /Selected: 08:00, 13:00, 18:00/);
+  assert.match(f, /←→ smart \/ fixed/, 'the focused row hint is short enough not to wrap');
 
   const sr = frameOf(baseConfig, baseStatus, true, 64, 'schedule');
   assert.match(sr, /\(selected\) Mode: fixed/);
@@ -239,6 +240,7 @@ test('the schedule tab shows the mode rows and the fixed-mode hour grid', () => 
 test('smart mode shows the band bar visually and the band hours to screen readers', () => {
   const visual = frameOf(smartConfig, smartStatus, false, 64, 'schedule');
   assert.match(visual, /█/);
+  assert.match(visual, /Tick\s+30m/, 'the shared tick sits with mode and scheduler');
   assert.match(visual, /Work start/);
 
   const sr = frameOf(smartConfig, smartStatus, true, 64, 'schedule');
@@ -260,9 +262,7 @@ test('narrow terminal reflows without overflowing its width', () => {
 
 test('wide terminal spreads into a two-column layout', () => {
   const f = frameOf(baseConfig, baseStatus, false, 120);
-  assert.match(f, /STATUS/);
-  assert.match(f, /ACTIONS/);
-  assert.match(f, /Save & apply/);
+  assert.match(f, /STATUS.*AGENTS/, 'status and agents sit side by side');
   assert.ok(maxLineLen(f) > 60, 'wide layout should be wider than the single-column cap');
 });
 
@@ -313,33 +313,38 @@ test('the status bar reflects editing, unsaved and confirmation states', () => {
   );
   assert.match(
     bar({ editing: false, dirty: true, message: 'Model → opus', hint: 'h' }),
-    /● unsaved · Model → opus/,
+    /● Model → opus · s to apply/,
   );
-  assert.match(bar({ editing: false, dirty: true, message: '', hint: 'h' }), /● unsaved — press s/);
+  assert.match(
+    bar({ editing: false, dirty: true, message: '', hint: 'h' }),
+    /● changes not applied · s to apply/,
+  );
   assert.match(bar({ editing: false, dirty: false, message: 'Saved', hint: 'h' }), /✓ Saved/);
   const clean = bar({ editing: false, dirty: false, message: '', hint: 'move keys' });
   assert.match(clean, /up to date/);
   assert.match(clean, /move keys/);
+  assert.ok(clean.includes(LEGEND), 'the legend is always the last line');
+  const noHint = bar({ editing: false, dirty: false, message: '', hint: '' });
+  assert.equal(noHint.trim().split('\n').length, 2, 'an empty hint drops its line');
 });
 
-test('every action accelerator is a letter present in its label', () => {
-  for (const row of ACTIONS) {
-    assert.ok(row.accel, `action "${row.key}" should have an accelerator`);
-    assert.equal(row.accel!.length, 1, `accelerator for "${row.key}" should be one char`);
+test('every legend key is documented in the help overlay', () => {
+  for (const key of ['s', 'r', 't', 'l', '?', 'q']) {
     assert.ok(
-      row.label.toLowerCase().includes(row.accel!.toLowerCase()),
-      `accelerator "${row.accel}" should appear in label "${row.label}"`,
+      SHORTCUTS.some((s) => s.keys === key),
+      `legend key "${key}" should have a help entry`,
     );
   }
 });
 
-test('every tab has a unique jump digit and its own focusable rows', () => {
+test('every tab has a unique jump digit; the editing tabs have focusable rows', () => {
   assert.deepEqual(
     TABS.map((t) => t.accel),
     ['1', '2', '3'],
   );
-  for (const tab of TABS) {
-    assert.ok(buildRows('smart', tab.key).length > 0, `${tab.key} should have rows`);
-    assert.ok(buildRows('fixed', tab.key).length > 0, `${tab.key} should have rows in fixed mode`);
+  assert.equal(buildRows('fixed', 'overview').length, 0, 'the overview is read-only');
+  for (const tab of ['agents', 'schedule'] as const) {
+    assert.ok(buildRows('smart', tab).length > 0, `${tab} should have rows`);
+    assert.ok(buildRows('fixed', tab).length > 0, `${tab} should have rows in fixed mode`);
   }
 });

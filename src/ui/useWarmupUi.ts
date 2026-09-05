@@ -27,11 +27,9 @@ import * as schedule from '../schedule.js';
 import { getStatus } from '../status.js';
 import type { Config, MultiConfig, ProviderId, SmartConfig, Status, UiAction } from '../types.js';
 import {
-  ACTIONS,
   buildRows,
   hoursPerRow,
   MAX_WIDTH,
-  MOVE_HINT,
   TABS,
   WIDE_AT,
   WIDE_MAX,
@@ -91,9 +89,9 @@ export function useWarmupUi({
   const ROWS = buildRows(view.mode, tab);
   // Toggling the mode shortens the schedule tab's row list, so the stored index can
   // outlive the row it pointed at; clamping keeps focus on the last row instead of
-  // reading past the end.
+  // reading past the end. The overview has no rows at all, so `row` can be undefined.
   const rowIdx = Math.min(idx, ROWS.length - 1);
-  const row = ROWS[rowIdx]!;
+  const row = ROWS[rowIdx];
   const agentIds = knownAgents(multi);
   const selectedId = multi.shared.selectedProvider;
   // The agents tab edits whichever agent the AGENTS cursor is on, NOT the selected
@@ -361,6 +359,7 @@ export function useWarmupUi({
     if (key.tab) return stepTab(key.shift ? -1 : 1);
     const byDigit = TABS.find((t) => t.accel === input);
     if (byDigit) return goTab(byDigit.key);
+    if (!row) return;
 
     // The AGENTS row is a vertical LIST, so ↑/↓ walk the agents themselves and only
     // hand focus to the neighbouring row once the cursor is at an end. Moving off a
@@ -424,7 +423,7 @@ export function useWarmupUi({
       } else if (input === ' ') {
         toggleHour(hourCursor);
       }
-    } else if (row.type === 'action' && key.return) doAction(row.key);
+    }
   });
 
   // Usage is read from the cache of the agent the panel is showing.
@@ -436,10 +435,9 @@ export function useWarmupUi({
     agentId,
     agentModel: String(agentCfg?.model ?? view.model),
     agentTmuxSession: agentCfg?.tmuxSession ?? view.tmuxSession,
-    focusedKey: row.key,
+    focusedKey: row?.key ?? '',
     tab,
     tabs: TABS,
-    actions: ACTIONS,
     hourCursor,
     agentIds,
     agentCursor,
@@ -456,7 +454,7 @@ export function useWarmupUi({
     width,
     wide,
     gridCols,
-    hint: `${MOVE_HINT}  ·  ${row.hint}  ·  ? help`,
+    hint: row?.hint ?? '',
   };
 }
 

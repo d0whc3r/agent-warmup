@@ -4,7 +4,16 @@
 import { loadConfig, saveConfig, MODELS, SCHEDULERS, MODES, getView } from './config.js';
 import { detectAll, detectProvider } from './detect.js';
 import * as launchd from './launchd.js';
-import { LABEL, PLIST_PATH, WARMUP_LOG, CONFIG_PATH, USAGE_CACHE } from './paths.js';
+import {
+  LABEL,
+  LEGACY_HOME,
+  PLIST_PATH,
+  WARMUP_HOME,
+  WARMUP_LOG,
+  CONFIG_PATH,
+  USAGE_CACHE,
+  migrateLegacyHome,
+} from './paths.js';
 import { printStatus } from './print-status.js';
 import { formatUsage } from './providers/claude.js';
 import { ALL_PROVIDER_IDS, getProvider } from './providers/index.js';
@@ -17,6 +26,10 @@ import type { Config, ProviderConfig, ProviderId, ProviderInput, UiAction } from
 const argv = process.argv.slice(2);
 const cmd: string | undefined = argv[0];
 const rest = argv.slice(1);
+
+// Pre-rename installs lived under ~/.claude/warmup; move them into the neutral home
+// before anything reads config, cache or logs.
+if (migrateLegacyHome()) console.error(`✓ moved ${LEGACY_HOME} → ${WARMUP_HOME}`);
 
 function reapplyIfActive(): boolean {
   if (getStatus().active) {
@@ -101,6 +114,7 @@ Files:
 }
 
 async function launchTUI(): Promise<void> {
+  schedule.repairStaleEntry();
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.log('(no TTY — showing status; run in a terminal for the interactive UI)\n');
     printStatus();
@@ -121,7 +135,7 @@ async function launchTUI(): Promise<void> {
       }),
     );
     await app.waitUntilExit();
-    if (pending === 'run') process.exit(runEnabled());
+    if (pending === 'run') process.exit(await runEnabled());
     if (pending !== 'logs') return;
     viewLogs(false);
   }
@@ -151,6 +165,7 @@ switch (cmd) {
     await launchTUI();
     break;
   case 'status':
+    schedule.repairStaleEntry();
     printStatus();
     break;
   case 'usage': {
@@ -165,7 +180,7 @@ switch (cmd) {
     process.stderr.write(`probing ${id} (${provider.model})…\n`);
     const ctx = { cfg: provider, shared: multi.shared, now: new Date() };
     const adapter = getProvider(id);
-    const live = adapter.probe(ctx);
+    const live = await adapter.probe(ctx);
     const cache = readCache();
     cache.providers = cache.providers ?? {};
     const usage = live ?? adapter.inferFromCache(ctx, cache.providers[id] ?? null);
@@ -192,7 +207,7 @@ switch (cmd) {
     // An unqualified scheduler tick must visit every enabled provider. The
     // selected provider is only a UI/default-run concern.
     const { id, rest: _r2 } = parseProviderFlag(rest, false);
-    const { results } = runTick({ dryRun, providerId: id });
+    const { results } = await runTick({ dryRun, providerId: id });
     for (const r of results) console.log(`[${r.id}] ${r.decision.action} — ${r.decision.reason}`);
     // Surface the worst arm status so launchd/cron monitoring sees failures
     // from any provider, not just the first one in the iteration order.
@@ -204,7 +219,7 @@ switch (cmd) {
     // No --provider means every enabled agent, matching the TUI's "Run warmup"
     // action and the set the scheduler's tick would arm.
     const { id, rest: _r2 } = parseProviderFlag(rest, false);
-    process.exit(id ? runNow(id) : runEnabled());
+    process.exit(id ? await runNow(id) : await runEnabled());
   }
   case 'start': {
     const ok = schedule.applySchedule(loadConfig());

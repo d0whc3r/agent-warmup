@@ -1,22 +1,28 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 // Run a provider's warmup now and read recent log output.
 import fs from 'node:fs';
+import readline from 'node:readline';
 
 import { ensureArmScript } from './assets.js';
-import { readCache, writeCache } from './cache.js';
+import { updateProviderCache } from './cache.js';
 import { loadConfig } from './config.js';
 import { appendLog } from './logs.js';
-import { WARMUP_LOG, LOG_DIR, WARMUP_HOME } from './paths.js';
+import { WARMUP_LOG, LOG_DIR, WARMUP_HOME, expandHome } from './paths.js';
 import { getProvider } from './providers/index.js';
 import type { ProviderId } from './types.js';
 
-// Spawn the arm script for the given provider (or the selected one when
-// omitted) and return its exit status. Forwards the right env so the script
-// can read provider-specific knobs (binary, model, tmux session, workdir).
-// Records the outcome (lastWarmAt, or the provider's cooldown bookkeeping) in
-// the usage cache so estimated-usage providers know a window is active whether
-// the arm came from the scheduler tick or a manual run.
-export function runNow(id?: ProviderId, now: Date = new Date()): number {
+// An arm that has not finished by then is stuck (tmux never came up, a login prompt
+// is waiting for input). Kill it so one hung agent cannot wedge the whole run/tick.
+const ARM_TIMEOUT_MS = 5 * 60_000;
+
+// Spawn the arm script for the given provider (or the selected one when omitted)
+// and resolve with its exit status. Forwards the right env so the script can read
+// provider-specific knobs (binary, model, tmux session, workdir). Output is streamed
+// line by line with an `[id]` prefix, so several agents can arm at once and their
+// output still reads. Records the outcome (lastWarmAt, or the provider's cooldown
+// bookkeeping) in the usage cache so estimated-usage providers know a window is
+// active whether the arm came from the scheduler tick or a manual run.
+export async function runNow(id?: ProviderId, now: Date = new Date()): Promise<number> {
   const multi = loadConfig();
   const selected = id ?? multi.shared.selectedProvider;
   const provider = multi.providers[selected];
@@ -46,39 +52,56 @@ export function runNow(id?: ProviderId, now: Date = new Date()): number {
   for (const key of ['CLAUDE_BIN', 'CODEX_BIN', 'KIMI_BIN', 'OPENCODE_BIN']) {
     if (env[key]) env[key] = expandHome(env[key]);
   }
-  const r = spawnSync('/bin/bash', [script], { stdio: 'inherit', env });
-  const status = r.status ?? 1;
+  const status = await spawnArm(selected, script, env);
 
-  const cache = readCache();
-  const entry = cache.providers[selected] ?? {};
-  if (adapter.recordArmResult) {
-    const recorded = adapter.recordArmResult(ctx, entry, status);
-    cache.providers[selected] = recorded.cache;
-    if (recorded.log) appendLog(now, `TICK [${selected}] ${recorded.log}`);
-  } else if (status === 0) {
-    cache.providers[selected] = { ...entry, lastWarmAt: now.getTime() };
-  }
-  writeCache(cache);
+  updateProviderCache(selected, (entry) => {
+    if (adapter.recordArmResult) {
+      const recorded = adapter.recordArmResult(ctx, entry, status);
+      if (recorded.log) appendLog(now, `TICK [${selected}] ${recorded.log}`);
+      return recorded.cache;
+    }
+    return status === 0 ? { ...entry, lastWarmAt: now.getTime() } : entry;
+  });
   return status;
 }
 
-// Warm every enabled agent, in the order the tick would visit them. This is what
-// "Run warmup now" means: the same set the scheduler would arm, just immediately.
-// Returns the first non-zero exit status so a failure anywhere reaches the caller.
-export function runEnabled(): number {
+function spawnArm(id: ProviderId, script: string, env: NodeJS.ProcessEnv): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn('/bin/bash', [script], {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: ARM_TIMEOUT_MS,
+    });
+    const prefix = (input: NodeJS.ReadableStream, out: NodeJS.WriteStream) =>
+      readline.createInterface({ input }).on('line', (line) => out.write(`[${id}] ${line}\n`));
+    prefix(child.stdout, process.stdout);
+    prefix(child.stderr, process.stderr);
+    child.on('error', () => resolve(1));
+    // A timeout kill arrives as a signal with no exit code; report it like timeout(1).
+    child.on('close', (code, signal) => resolve(code ?? (signal ? 124 : 1)));
+  });
+}
+
+// Warm every enabled agent at once. This is what "Run warmup now" means: the same
+// set the scheduler would arm, just immediately. Agents are independent, so one
+// failing (or slow) agent never delays or cancels another; the per-agent summary at
+// the end is where a failure shows up after the interleaved output. Returns the
+// first non-zero exit status so a failure anywhere reaches the caller.
+export async function runEnabled(): Promise<number> {
   const multi = loadConfig();
   const ids = multi.shared.providers.filter((id) => multi.providers[id]?.enabled);
   if (!ids.length) {
     process.stderr.write('✗ no agents are enabled\n');
     return 1;
   }
-  let worst = 0;
-  for (const id of ids) {
-    if (ids.length > 1) process.stdout.write(`\n── ${id} ──\n`);
-    const status = runNow(id);
-    if (status !== 0 && worst === 0) worst = status;
+  const statuses = await Promise.all(ids.map((id) => runNow(id)));
+  for (const [i, id] of ids.entries()) {
+    const status = statuses[i]!;
+    process.stdout.write(
+      `${status === 0 ? '✓' : '✗'} ${id}${status === 0 ? '' : ` failed (status ${status})`}\n`,
+    );
   }
-  return worst;
+  return statuses.find((s) => s !== 0) ?? 0;
 }
 
 // Open the warmup log in a navigable view. On an interactive terminal we hand off to
@@ -114,12 +137,4 @@ export function lastRunSummary(): string | null {
   } catch {
     return null;
   }
-}
-
-// Tiny `~` expander for binary paths the user wrote in the env ("~/.local/bin/claude").
-// Doesn't go through $HOME-aware expansion because the env files are edited by hand
-// and we want the literal value the user picked.
-function expandHome(p: string): string {
-  if (p === '~' || p.startsWith('~/')) return process.env.HOME + p.slice(1);
-  return p;
 }

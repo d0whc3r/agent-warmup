@@ -1,19 +1,19 @@
 // Interactive terminal UI for agent-warmup, built with Ink. The panel is tabbed:
 // OVERVIEW answers "how is everything doing" (scheduler state plus every agent's
-// usage) and holds the action buttons, AGENTS picks the agent to warm and configures
-// how to reach it, SCHEDULE decides when the tick runs. Responsive: a single labelled
-// column that reflows on narrow terminals, split into two side-by-side columns on
-// wide ones. tab / shift+tab (or 1-3) switch tabs; the action accelerators (s, r, t,
-// l, q) and the agent keys (p, d) work from every tab.
+// usage), AGENTS picks the agent to warm and configures how to reach it, SCHEDULE
+// decides when the tick runs. Responsive: a single labelled column that reflows on
+// narrow terminals, split into two side-by-side columns on wide ones. tab / shift+tab
+// (or 1-3) switch tabs; the action keys (s, r, t, l, q) sit in the status-bar legend
+// and, like the agent keys (p, d), work from every tab.
 import { Box } from 'ink';
 
 import type { Detection } from '../detect.js';
 import type { MultiConfig, Status, UiAction } from '../types.js';
-import { ActionsSection } from './components/ActionsSection.jsx';
 import { AgentsSection } from './components/AgentsSection.jsx';
 import { Header } from './components/Header.jsx';
 import { HelpOverlay } from './components/HelpOverlay.jsx';
 import { OverviewSection } from './components/OverviewSection.jsx';
+import { Split } from './components/primitives.jsx';
 import { ScheduleSection } from './components/ScheduleSection.jsx';
 import { SettingsSection } from './components/SettingsSection.jsx';
 import { StatusBar } from './components/StatusBar.jsx';
@@ -21,36 +21,6 @@ import { TabBar } from './components/TabBar.jsx';
 import { UsageSection } from './components/UsageSection.jsx';
 import { SHORTCUTS, type TabKey } from './model.js';
 import { useWarmupUi } from './useWarmupUi.js';
-
-// Two side-by-side halves on a wide terminal, stacked on a narrow one.
-function Split({
-  wide,
-  left,
-  right,
-}: {
-  wide: boolean;
-  left: React.ReactNode;
-  right: React.ReactNode;
-}) {
-  if (!wide) {
-    return (
-      <>
-        {left}
-        {right}
-      </>
-    );
-  }
-  return (
-    <Box>
-      <Box flexDirection="column" width="50%" paddingRight={1}>
-        {left}
-      </Box>
-      <Box flexDirection="column" width="50%" paddingLeft={1}>
-        {right}
-      </Box>
-    </Box>
-  );
-}
 
 export default function App({
   onAction,
@@ -103,24 +73,22 @@ export default function App({
       return (
         <ScheduleSection
           config={ui.config}
+          agentId={ui.agentId}
           focusedKey={ui.focusedKey}
           hourCursor={ui.hourCursor}
           gridCols={ui.gridCols}
+          wide={ui.wide}
         />
       );
     }
     return (
-      <Split
-        wide={ui.wide}
-        left={<OverviewSection config={ui.multi} status={ui.status} ids={ui.agentIds} />}
-        right={<ActionsSection actions={ui.actions} focusedKey={ui.focusedKey} />}
-      />
+      <OverviewSection config={ui.multi} status={ui.status} ids={ui.agentIds} wide={ui.wide} />
     );
   };
 
   return (
     <Box flexDirection="column" width={ui.width} paddingX={1}>
-      <Header config={ui.multi} status={ui.status} />
+      <Header status={ui.status} />
       <TabBar tabs={ui.tabs} active={ui.tab} />
       {ui.showHelp ? <HelpOverlay shortcuts={SHORTCUTS} /> : panel()}
       <StatusBar

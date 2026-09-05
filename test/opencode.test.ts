@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
-import { parseStatsCost } from '../src/providers/opencode.js';
+import { DEFAULT_MULTI } from '../src/config.js';
+import { parseStatsCost, probe } from '../src/providers/opencode.js';
+import type { ProbeContext } from '../src/providers/types.js';
 
 // A realistic `opencode stats --days 7 --models 1` capture. The model column
 // is left-padded; the cost column is right-padded; values use the
@@ -57,4 +62,55 @@ test('parseStatsCost returns null for empty input', () => {
 test('parseStatsCost handles whole-dollar amounts (no decimals)', () => {
   const out = '  deepseek-v4-flash      1,234 in / 567 out   $1\n';
   assert.equal(parseStatsCost(out, 'deepseek-v4-flash'), 1);
+});
+
+// The probe itself: `opencode stats` is spawned for real against a stub binary, so
+// the mapping from a dollar figure to the weekly percentage stays covered.
+function stubOpencode(body: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-opencode-'));
+  const file = path.join(dir, 'opencode');
+  fs.writeFileSync(file, `#!/usr/bin/env bash\n${body}\n`);
+  fs.chmodSync(file, 0o755);
+  return file;
+}
+
+function ctxFor(binary: string, model = 'opencode-go/deepseek-v4-flash'): ProbeContext {
+  return {
+    cfg: { ...DEFAULT_MULTI.providers.opencode!, binary, model },
+    shared: DEFAULT_MULTI.shared,
+    now: new Date('2026-09-05T10:00:00Z'),
+  };
+}
+
+test('probe maps the model spend onto the weekly $30 cap', () => {
+  // $7.50 of a $30 weekly plan is 25%.
+  const bin = stubOpencode(
+    `[ "$1" = "--version" ] && exit 0\necho '  opencode-go/deepseek-v4-flash  1 in / 2 out   $7.50'`,
+  );
+  const usage = probe(ctxFor(bin));
+  assert.equal(usage?.week?.pct, 25);
+  // The five-hour window is not queryable from the CLI, so it stays unknown and
+  // the cache-based fallback decides.
+  assert.equal(usage?.session, null);
+  assert.equal(usage?.capturedAt, Date.parse('2026-09-05T10:00:00Z'));
+});
+
+test('probe caps the weekly percentage at 100 rather than reporting over-spend', () => {
+  const bin = stubOpencode(
+    `[ "$1" = "--version" ] && exit 0\necho '  opencode-go/deepseek-v4-flash  1 in / 2 out   $45.00'`,
+  );
+  assert.equal(probe(ctxFor(bin))?.week?.pct, 100);
+});
+
+test('probe returns an "estimated" snapshot when the model has no recorded spend', () => {
+  const bin = stubOpencode('[ "$1" = "--version" ] && exit 0\necho "no usage yet"');
+  const usage = probe(ctxFor(bin));
+  assert.equal(usage?.inferred, true);
+  assert.equal(usage?.week, null);
+});
+
+test('probe gives up when the binary is missing or the stats call fails', () => {
+  assert.equal(probe(ctxFor('/nonexistent/opencode')), null);
+  const failing = stubOpencode('[ "$1" = "--version" ] && exit 0\nexit 3');
+  assert.equal(probe(ctxFor(failing)), null);
 });

@@ -32,17 +32,26 @@ log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG" >
 [ -x "$TMUX_BIN" ]   || { log "ERROR: tmux not executable at $TMUX_BIN"; exit 1; }
 
 "$TMUX_BIN" kill-session -t "$SESSION" 2>/dev/null || true
-log "START (model=$MODEL workdir=$WORKDIR)"
+log "START claude (model=$MODEL workdir=$WORKDIR)"
 
 "$TMUX_BIN" new-session -d -s "$SESSION" -x 220 -y 50 -c "$WORKDIR" \
   "$WARMUP_BIN" --safe-mode --model "$MODEL"
 
 sleep "$READY_WAIT"
 
-if "$TMUX_BIN" capture-pane -p -t "$SESSION" 2>/dev/null \
-     | grep -qiE "trust this folder|project you (created|trust)|do you trust"; then
-  log "trust dialog detected -> accepting (1)"
-  "$TMUX_BIN" send-keys -t "$SESSION" "1"
+SHOWN="$("$TMUX_BIN" capture-pane -p -t "$SESSION" 2>/dev/null || true)"
+if grep -qiE "trust this folder|project you (created|trust)|do you trust" <<<"$SHOWN"; then
+  # Two layouts: the numbered list ("1. Yes, proceed") takes the digit; the cursor
+  # list (Claude Code >= 2.1.2xx) highlights "No, exit" first, so Down moves onto
+  # "Yes, I trust this folder" before Enter confirms.
+  if grep -q "Yes, I trust this folder" <<<"$SHOWN"; then
+    log "trust dialog detected -> accepting (Down+Enter)"
+    "$TMUX_BIN" send-keys -t "$SESSION" Down
+  else
+    log "trust dialog detected -> accepting (1)"
+    "$TMUX_BIN" send-keys -t "$SESSION" "1"
+  fi
+  sleep 0.5
   "$TMUX_BIN" send-keys -t "$SESSION" Enter
   sleep 4
 fi
@@ -53,14 +62,14 @@ sleep 1
 
 sleep "$RESPONSE_WAIT"
 
-PANE="$LOG_DIR/pane-$(date '+%Y%m%d-%H%M%S').txt"
+PANE="$LOG_DIR/pane-claude-$(date '+%Y%m%d-%H%M%S').txt"
 "$TMUX_BIN" capture-pane -p -t "$SESSION" -S -400 > "$PANE" 2>/dev/null || true
 
 if grep -q '⏺' "$PANE" 2>/dev/null; then
-  log "OK: reply received -> usage window armed (pane: $PANE)"
+  log "OK: Claude Code replied -> usage window armed (pane: $PANE)"
   STATUS=0
 else
-  log "WARN: no reply detected; check $PANE (may need higher READY_WAIT/RESPONSE_WAIT)"
+  log "WARN: Claude Code warmup failed (no reply; status=2); check $PANE (may need higher READY_WAIT/RESPONSE_WAIT)"
   STATUS=2
 fi
 
@@ -71,5 +80,5 @@ sleep 2
 
 find "$LOG_DIR" -name 'pane-*.txt' -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
 
-log "DONE (status=$STATUS)"
+log "DONE claude (status=$STATUS)"
 exit "$STATUS"

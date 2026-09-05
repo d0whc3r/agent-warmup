@@ -10,7 +10,8 @@ this aligns the next reset with a useful time; for rolling windows it is only a
 scheduled readiness pulse and does not move the reset boundary.
 
 The canonical CLI is `agent-warmup`. The old `claude-warmup` command remains an
-alias, and existing installs under `~/.claude/warmup` are detected automatically.
+alias, and an existing `~/.claude/warmup` install is moved to `~/.agent-warmup`
+the first time the CLI runs.
 
 ## Supported providers
 
@@ -127,11 +128,11 @@ agent-warmup start
 Running `agent-warmup` with no arguments opens the Ink terminal UI. It has three
 tabs — `tab` / `shift+tab` cycle them, `1`, `2` and `3` jump straight to one:
 
-| Tab          | What it holds                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------ |
-| **Overview** | Scheduler state, next run, the active window, the last tick, one usage line per agent, and the actions |
-| **Agents**   | The agent picker plus the selected agent's model, binary path and tmux session, with its usage         |
-| **Schedule** | Mode, scheduler, and either the smart-mode band or the fixed-mode hour grid                            |
+| Tab          | What it holds                                                                                        |
+| ------------ | ---------------------------------------------------------------------------------------------------- |
+| **Overview** | Scheduler state, next run, the active window, the last tick and one usage line per agent             |
+| **Agents**   | The agent picker plus the selected agent's model, binary path and tmux session, with its usage       |
+| **Schedule** | Mode, scheduler and tick, plus the default agent's hours: the smart-mode band or the fixed hour grid |
 
 Every agent keeps its own model, binary path and tmux session. On the Agents tab
 the settings card below the list is bound to the agent under the cursor — its id
@@ -145,13 +146,17 @@ requires enabling or selecting it first:
 - `d` autodetects the binary of the agent on screen.
 
 The `Binary` row shows the configured path with a `✓`/`✗` marker for whether it
-actually works. `Run warmup (all enabled)` (`r`) warms every enabled agent, the
-same set `Save & apply` schedules. The `*` in the list marks the default agent
-for CLI commands run without `--provider`; `p` cycles it.
+actually works. `Run warmup (all enabled)` (`r`) warms every enabled agent at
+once — the same set `Save & apply` schedules — and prints a ✓/✗ line per agent
+when they are all done. The `*` in the list marks the default agent: the one CLI
+commands run without `--provider`, and the one whose hours the Schedule tab edits
+(its id is in the `HOURS · claude` card title); `p` cycles it.
 
-The action keys work from every tab: `s` save & apply, `r` run a warmup now,
-`t` stop the schedulers, `l` view logs, `m` toggle smart/fixed, `p` cycle the
-enabled agents, `?` the full key map, `q` quit.
+The action keys sit on the last line of the panel and work from every tab: `s`
+save & apply, `r` run a warmup now, `t` stop the schedulers, `l` view logs, `m`
+toggle smart/fixed, `p` cycle the enabled agents, `?` the full key map, `q` quit.
+Every change is written to disk at once; the status line reminds you to press `s`
+until the scheduler has been re-installed with it.
 
 ## Commands
 
@@ -195,15 +200,25 @@ providers use local successful-arm history.
 cron entry contains the union of those hours; the tick only arms providers whose
 own schedule matches the current hour.
 
-Two failed arms within 30 minutes put cache-based providers into a one-hour
-cooldown. This prevents an expired login or missing binary from being retried on
-every scheduler tick.
+Providers are probed and armed concurrently, both by the tick and by `run`. Each
+has its own cache entry and decision, so a slow or failing provider never delays
+or cancels another; an arm that is still running after five minutes is killed.
+Arm output is prefixed with the agent id, and `run` ends with a per-agent ✓/✗
+summary. In `warmup.log` every line carries its agent (`TICK [codex] …`,
+`START codex …`, `OK: OpenAI Codex replied …`).
+
+Two failed arms within two hours (two consecutive failing ticks at any cadence)
+put cache-based providers into a one-hour cooldown. This prevents an expired
+login or missing binary from being retried on every scheduler tick.
 
 ## Configuration and files
 
-New installs use `~/.agent-warmup/` for `warmup.env`, the usage cache, logs and
-the sterile warmup workdir. If the legacy `~/.claude/warmup/` exists and the new
-home does not, it continues to be used. Set `WARMUP_HOME` to override either.
+Everything lives under `~/.agent-warmup/`: `warmup.env`, the usage cache, logs
+and the sterile warmup workdir — a neutral home, nothing under any one agent's
+dot-dir. A legacy `~/.claude/warmup/` install is moved there the first time the
+CLI runs, and an installed scheduler entry still logging to the old path is
+re-applied the next time you open the TUI or run `status`. Set `WARMUP_HOME` to
+override.
 
 Configuration is a plain `.env` file:
 

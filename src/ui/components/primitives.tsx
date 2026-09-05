@@ -34,9 +34,10 @@ export function Choice({ value, focused }: { value: string; focused: boolean }) 
 
 // A bordered, titled "card" grouping one section's rows. The active card (the one
 // holding the focused row) gets a bright solid border and a highlighted title; the
-// rest are dimmed. The border is purely visual — Ink omits borders entirely from
-// screen-reader output — so cards organise the layout for sighted users without
-// adding any noise for screen-reader users.
+// rest are dimmed. Cards stack flush (the borders separate them) so the busiest tab
+// still fits an 80×24 terminal. The border is purely visual — Ink omits borders
+// entirely from screen-reader output — so cards organise the layout for sighted
+// users without adding any noise for screen-reader users.
 export function Card({
   title,
   hint,
@@ -51,16 +52,17 @@ export function Card({
   return (
     <Box
       flexDirection="column"
-      marginTop={1}
       paddingX={1}
       borderStyle="round"
       borderColor={active ? 'cyan' : 'gray'}
       borderDimColor={!active}
     >
       <Box>
-        <Text bold color={active ? 'cyan' : undefined}>
-          {title}
-        </Text>
+        <Box flexShrink={0}>
+          <Text bold color={active ? 'cyan' : undefined}>
+            {title}
+          </Text>
+        </Box>
         {hint != null ? <Text dimColor>{`  ${hint}`}</Text> : null}
       </Box>
       {children}
@@ -70,7 +72,9 @@ export function Card({
 
 // "▶ Label        value". The row's aria-label gives the screen reader the whole
 // "Label: value" line (children are skipped in SR mode), and aria-state marks the
-// focused row as selected so it reads e.g. "(selected) Mode: smart".
+// focused row as selected so it reads e.g. "(selected) Mode: smart". The gutter and
+// label never shrink, so a long value wraps under itself instead of pushing the
+// label column out of line with its neighbours.
 export function SettingRow({
   focused,
   label,
@@ -89,9 +93,33 @@ export function SettingRow({
       aria-label={`${label}: ${ariaValue}`}
       aria-state={focused ? { selected: true } : undefined}
     >
-      <Pointer focused={focused} />
-      <Text bold={focused}>{label.padEnd(labelWidth)}</Text>
+      <Box flexShrink={0}>
+        <Pointer focused={focused} />
+        <Text bold={focused}>{label.padEnd(labelWidth)}</Text>
+      </Box>
       {children}
+    </Box>
+  );
+}
+
+// Two side-by-side halves on a wide terminal, stacked on a narrow one.
+export function Split({ wide, left, right }: { wide: boolean; left: ReactNode; right: ReactNode }) {
+  if (!wide) {
+    return (
+      <>
+        {left}
+        {right}
+      </>
+    );
+  }
+  return (
+    <Box>
+      <Box flexDirection="column" width="50%" paddingRight={1}>
+        {left}
+      </Box>
+      <Box flexDirection="column" width="50%" paddingLeft={1}>
+        {right}
+      </Box>
     </Box>
   );
 }
