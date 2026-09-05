@@ -10,6 +10,12 @@ import { fileURLToPath } from 'node:url';
 // developer's real crontab and LaunchAgents.
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const CLI = path.join(ROOT, 'src', 'cli.ts');
+// Every run() is a real process, and `node --import tsx src/cli.ts` re-transpiles the
+// whole graph each time (~600ms). The prebuilt bundle is the same CLI in ~45ms, which
+// is the difference between a 33s and a 10s suite. `pnpm test` builds it first, so it
+// is never stale; the tsx fallback keeps a bare `node --test test/foo.test.ts` working.
+const BUNDLE = path.join(ROOT, 'dist', 'agent-warmup.mjs');
+export const CLI_ARGV = fs.existsSync(BUNDLE) ? [BUNDLE] : ['--import', 'tsx', CLI];
 
 const CRONTAB_SHIM = `#!/usr/bin/env bash
 case "$1" in
@@ -29,6 +35,15 @@ export const DEFAULT_ENV_LINES = [
   'WARMUP_CODEX_SCHEDULE=8,13,18',
   'WARMUP_CLAUDE_ENABLED=false',
 ];
+
+// Arm scripts are wired in through WARMUP_<ID>_SCRIPT, so a run or tick can be driven
+// end to end without spending anyone's real quota.
+export function armScript(body: string): string {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-arm-')), 'arm.sh');
+  fs.writeFileSync(file, body);
+  fs.chmodSync(file, 0o755);
+  return file;
+}
 
 export interface SandboxOptions {
   crontabText?: string;
@@ -70,7 +85,7 @@ export function sandbox(options: SandboxOptions = {}): Sandbox {
     home,
     warmupHome,
     run: (...args) =>
-      spawnSync(process.execPath, ['--import', 'tsx', CLI, ...args], {
+      spawnSync(process.execPath, [...CLI_ARGV, ...args], {
         cwd: ROOT,
         encoding: 'utf8',
         env: {

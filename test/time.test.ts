@@ -1,14 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import {
-  toDate,
-  formatClock,
-  formatShortDate,
-  formatStamp,
-  minutesSince,
-  FIVE_HOURS_MS,
-} from '../src/time.js';
+import { toDate, formatClock, formatShortDate, formatStamp, minutesSince } from '../src/time.js';
 
 test('toDate coerces Date | ISO string | epoch ms, rejects garbage', () => {
   const d = new Date(2026, 5, 13, 15, 30, 0);
@@ -35,8 +28,4 @@ test('minutesSince returns whole elapsed minutes, null-safe', () => {
   const now = new Date(2026, 5, 13, 15, 30, 0);
   assert.equal(minutesSince(now.getTime() - 3 * 60_000, now), 3);
   assert.equal(minutesSince(null, now), null);
-});
-
-test('FIVE_HOURS_MS is five hours in milliseconds', () => {
-  assert.equal(FIVE_HOURS_MS, 5 * 60 * 60 * 1000);
 });

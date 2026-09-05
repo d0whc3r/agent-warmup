@@ -1,31 +1,32 @@
-import { addMilliseconds, differenceInMilliseconds, formatClock } from '../time.js';
+import { FIVE_HOURS_MS, addMilliseconds, differenceInMilliseconds, formatClock } from '../time.js';
 import type { Decision, ProviderCache, ProviderUsage } from '../types.js';
 import type { ProbeContext } from './types.js';
 
-export const DEFAULT_WINDOW_MS = 5 * 60 * 60 * 1000;
 // Two failures inside this window trip the breaker. Wider than the slowest tick
 // cadence (60m) so two consecutive failing ticks always count as a pair; at 30m it
 // was a coin flip whether a 30m-cadence tick landed inside or just outside it.
 const FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const COOLDOWN_MS = 60 * 60 * 1000;
 
-export function inferWindowFromCache(
-  ctx: ProbeContext,
-  cache: ProviderCache | null,
-  windowMs = DEFAULT_WINDOW_MS,
-): ProviderUsage {
+// The shared cache-based fallback: a warmup inside the last five hours counts as an
+// active session. Takes a bare `now` so the Claude provider -- which has its own
+// signature and deliberately drops the weekly figure -- can reuse it too.
+export function inferWindow(now: Date, cache: ProviderCache | null): ProviderUsage {
   const last = cache?.lastWarmAt;
-  const active = last != null && differenceInMilliseconds(ctx.now, last) < windowMs;
+  const active = last != null && differenceInMilliseconds(now, last) < FIVE_HOURS_MS;
   return {
     inferred: true,
     session: {
       pct: active ? 1 : 0,
-      resetsAt: active && last != null ? addMilliseconds(last, windowMs) : null,
+      resetsAt: active && last != null ? addMilliseconds(last, FIVE_HOURS_MS) : null,
       active,
     },
     week: cache?.week ?? null,
   };
 }
+
+export const inferWindowFromCache = (ctx: ProbeContext, cache: ProviderCache | null) =>
+  inferWindow(ctx.now, cache);
 
 export function decideWindow(ctx: ProbeContext, usage: ProviderUsage | null): Decision {
   const { workStart, workEnd, weeklyStopPercent } = ctx.cfg;
@@ -45,7 +46,7 @@ export function decideWindow(ctx: ProbeContext, usage: ProviderUsage | null): De
   // A probe read from a log file (codex) can predate our own last arm; the arm
   // we did is the freshest signal, so honor it before the probe's session flag.
   const lastWarmAt = (usage as { lastWarmAt?: number } | null)?.lastWarmAt ?? 0;
-  if (lastWarmAt > 0 && differenceInMilliseconds(ctx.now, lastWarmAt) < DEFAULT_WINDOW_MS) {
+  if (lastWarmAt > 0 && differenceInMilliseconds(ctx.now, lastWarmAt) < FIVE_HOURS_MS) {
     return { action: 'skip-active', reason: 'window likely active (cache-derived)' };
   }
   if (usage?.session?.active) {

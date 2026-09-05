@@ -6,6 +6,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { CLI_ARGV } from './helpers/sandbox.js';
+
 // A throwaway home, set before paths.js is imported: WARMUP_HOME is resolved once
 // at module load, and the ARM_SCRIPT fallback writes under it.
 const HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-paths-'));
@@ -13,7 +15,6 @@ process.env.WARMUP_HOME = HOME_DIR;
 const { expandHome, ARM_SCRIPT, ARM_SCRIPT_SRC, WARMUP_HOME } = await import('../src/paths.js');
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const CLI = path.join(ROOT, 'src', 'cli.ts');
 
 test('expandHome only rewrites a leading ~, never a bare prefix match', () => {
   assert.equal(expandHome('~'), os.homedir());
@@ -87,7 +88,7 @@ test('a .ts entry re-invokes itself through the tsx loader, a bundled entry does
 function runCli(env: NodeJS.ProcessEnv) {
   const e: NodeJS.ProcessEnv = { ...process.env, ...env };
   if (!env.WARMUP_HOME) delete e.WARMUP_HOME;
-  return spawnSync(process.execPath, ['--import', 'tsx', CLI, 'help'], {
+  return spawnSync(process.execPath, [...CLI_ARGV, 'help'], {
     cwd: ROOT,
     encoding: 'utf8',
     env: e,

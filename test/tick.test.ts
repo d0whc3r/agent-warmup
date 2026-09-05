@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { sandbox, type Sandbox } from './helpers/sandbox.js';
+import { armScript, sandbox, type Sandbox } from './helpers/sandbox.js';
 
 // Smart-mode ticks end to end: what the tick decides, what it writes to the cache
 // and the log, and whether it actually arms. `kimi` is the subject throughout —
@@ -13,16 +12,7 @@ import { sandbox, type Sandbox } from './helpers/sandbox.js';
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const ARM_STUB = armScript('#!/usr/bin/env bash\necho "ARMED $WARMUP_PROVIDER"\n');
 
-// Arm scripts are wired in through WARMUP_<ID>_SCRIPT, so a tick can be driven end
-// to end without spending anyone's real quota.
-function armScript(body: string): string {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-arm-')), 'arm.sh');
-  fs.writeFileSync(file, body);
-  fs.chmodSync(file, 0o755);
-  return file;
-}
-
-function smartSandbox(overrides: readonly string[] = []): Sandbox {
+function smartSandbox(overrides: readonly string[] = [], script = ARM_STUB): Sandbox {
   return sandbox({
     envLines: [
       'WARMUP_MODE=smart',
@@ -38,7 +28,7 @@ function smartSandbox(overrides: readonly string[] = []): Sandbox {
       'WARMUP_KIMI_WEEKLY_STOP_PERCENT=90',
       ...overrides,
     ],
-    env: { WARMUP_KIMI_SCRIPT: ARM_STUB },
+    env: { WARMUP_KIMI_SCRIPT: script },
   });
 }
 
@@ -114,20 +104,7 @@ test('outside the work band the tick skips without touching the agent', () => {
 });
 
 test('a failing arm surfaces its status as the tick exit code', () => {
-  const failing = armScript('#!/usr/bin/env bash\nexit 2\n');
-  const s = sandbox({
-    envLines: [
-      'WARMUP_MODE=smart',
-      'WARMUP_SCHEDULER=cron',
-      'WARMUP_PROVIDERS=kimi',
-      'WARMUP_SELECTED_PROVIDER=kimi',
-      'WARMUP_CLAUDE_ENABLED=false',
-      'WARMUP_KIMI_ENABLED=true',
-      'WARMUP_KIMI_WORK_START=0',
-      'WARMUP_KIMI_WORK_END=24',
-    ],
-    env: { WARMUP_KIMI_SCRIPT: failing },
-  });
+  const s = smartSandbox([], armScript('#!/usr/bin/env bash\nexit 2\n'));
   const result = s.run('tick');
   assert.equal(result.status, 2, result.stdout + result.stderr);
   // The failure is remembered so a second one trips the circuit breaker.
@@ -137,17 +114,7 @@ test('a failing arm surfaces its status as the tick exit code', () => {
 });
 
 test('a missing arm script fails the run instead of reporting success', () => {
-  const s = sandbox({
-    envLines: [
-      'WARMUP_MODE=smart',
-      'WARMUP_SCHEDULER=cron',
-      'WARMUP_PROVIDERS=kimi',
-      'WARMUP_SELECTED_PROVIDER=kimi',
-      'WARMUP_CLAUDE_ENABLED=false',
-      'WARMUP_KIMI_ENABLED=true',
-    ],
-    env: { WARMUP_KIMI_SCRIPT: '/nonexistent/arm.sh' },
-  });
+  const s = smartSandbox([], '/nonexistent/arm.sh');
   const result = s.run('run', '--provider', 'kimi');
   assert.notEqual(result.status, 0);
 });

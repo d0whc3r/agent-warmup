@@ -7,17 +7,9 @@ import fs from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { ARM_SCRIPT, ARM_SCRIPT_SRC, TMUX_BIN, WARMUP_WORKDIR, expandHome } from '../paths.js';
-import {
-  FIVE_HOURS_MS,
-  parseReset,
-  formatClock,
-  formatShortDate,
-  minutesSince,
-  addMilliseconds,
-  differenceInMilliseconds,
-  isAfter,
-} from '../time.js';
+import { parseReset, formatClock, formatShortDate, minutesSince, isAfter } from '../time.js';
 import type { Decision, LimitBlock, ProviderCache, ProviderUsage } from '../types.js';
+import { inferWindow } from './common.js';
 import type { ProbeContext, Provider } from './types.js';
 
 // Async on purpose: the tick probes all providers at once, and this probe sleeps
@@ -173,19 +165,10 @@ export function formatUsage(cache: ProviderCache | null | undefined): {
 
 // Cache-based fallback (used when the live probe fails). Same semantics as the
 // legacy `inferFromCache` in usage.ts: a warmup within the last 5h counts as an
-// active window.
+// active window. Claude's weekly figure only ever comes from a live `/usage` probe,
+// never from the cache, so the inferred snapshot drops it.
 export function inferFromCache(now: Date, cache: ProviderCache | null): ProviderUsage {
-  const last = cache?.lastWarmAt;
-  const active = last != null && differenceInMilliseconds(now, last) < FIVE_HOURS_MS;
-  return {
-    inferred: true,
-    session: {
-      pct: active ? 1 : 0,
-      resetsAt: active && last != null ? addMilliseconds(last, FIVE_HOURS_MS) : null,
-      active,
-    },
-    week: null,
-  };
+  return { ...inferWindow(now, cache), week: null };
 }
 
 // The arm script body for Claude Code. Read all its config from env so the

@@ -76,12 +76,23 @@ function harness(columns = 64) {
     stdin,
     patchConsole: false,
   } as never);
-  // Ink batches renders, so each keypress yields long enough for the next frame to
-  // be written before the assertion reads it.
+  // Ink batches renders, so a keypress has to yield before the assertion reads the
+  // frame. Wait for the frame count to stop growing rather than sleeping a fixed
+  // 60ms: it settles in ~4ms instead, and it cannot lose the race on a loaded
+  // machine the way a fixed sleep can.
   const press = async (input: string) => {
+    const before = frames.length;
     queue.push(input);
     stdin.emit('readable');
-    await delay(60);
+    // First wait for the keypress to render at all. Ink skips the write when a frame
+    // is byte-identical, so a press that changes nothing visible never arrives; the
+    // ceiling is the 60ms this used to sleep unconditionally.
+    for (let i = 0; i < 30 && frames.length === before; i++) await delay(2);
+    // ...then for the batch to stop growing, so the assertion reads the settled frame.
+    for (let previous = -1; previous !== frames.length;) {
+      previous = frames.length;
+      await delay(2);
+    }
   };
   const frame = () => frames.filter((f) => f.includes('agent-warmup')).at(-1) ?? '';
   return { press, frame, instance };
