@@ -2,6 +2,9 @@ node_modules/
 *.log
 .DS_Store
 
+# coverage reports (coverage:lcov)
+coverage/
+
 # build artifacts (SEA bundle + blob + executable)
 dist/
 *.blob
