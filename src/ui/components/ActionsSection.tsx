@@ -39,7 +39,13 @@ function AccelLabel({
   );
 }
 
-export function ActionsSection({ actions, focusedKey }: { actions: Row[]; focusedKey: string }) {
+export function ActionsSection({
+  actions,
+  focusedKey,
+}: {
+  actions: readonly Row[];
+  focusedKey: string;
+}) {
   return (
     <Card title="ACTIONS" active={actions.some((a) => a.key === focusedKey)}>
       {actions.map((a) => {

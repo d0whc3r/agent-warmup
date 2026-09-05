@@ -75,11 +75,13 @@ export function SettingRow({
   focused,
   label,
   ariaValue,
+  labelWidth = LABEL_W,
   children,
 }: {
   focused: boolean;
   label: string;
   ariaValue: string;
+  labelWidth?: number;
   children?: ReactNode;
 }) {
   return (
@@ -88,7 +90,7 @@ export function SettingRow({
       aria-state={focused ? { selected: true } : undefined}
     >
       <Pointer focused={focused} />
-      <Text bold={focused}>{label.padEnd(LABEL_W)}</Text>
+      <Text bold={focused}>{label.padEnd(labelWidth)}</Text>
       {children}
     </Box>
   );

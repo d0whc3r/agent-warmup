@@ -9,7 +9,26 @@ import type { Config, SmartConfig } from '../../types.js';
 import { AXIS, chunk, HOURS } from '../model.js';
 import { Card, Choice, Pointer, SettingRow } from './primitives.jsx';
 
-const SMART_KEYS = ['workStart', 'workEnd', 'tick', 'weeklyStop'];
+const SMART_KEYS = ['mode', 'scheduler', 'workStart', 'workEnd', 'tick', 'weeklyStop'];
+
+// Mode and scheduler head both variants of the card: they decide WHEN the tick runs,
+// which is what the rest of the card configures.
+function ModeRows({ config, focusedKey }: { config: Config; focusedKey: string }) {
+  return (
+    <>
+      <SettingRow focused={focusedKey === 'mode'} label="Mode" ariaValue={config.mode}>
+        <Choice value={config.mode} focused={focusedKey === 'mode'} />
+      </SettingRow>
+      <SettingRow
+        focused={focusedKey === 'scheduler'}
+        label="Scheduler"
+        ariaValue={config.scheduler}
+      >
+        <Choice value={config.scheduler} focused={focusedKey === 'scheduler'} />
+      </SettingRow>
+    </>
+  );
+}
 
 // Smart mode: a lit work band ("█") over the rest of the day ("·"). Lit vs unlit is a
 // shape difference (block vs dot), not just colour. Decorative — aria-hidden.
@@ -80,6 +99,7 @@ export function ScheduleSection({
   if (config.mode === 'smart') {
     return (
       <Card title="SCHEDULE" hint="usage-aware" active={SMART_KEYS.includes(focusedKey)}>
+        <ModeRows config={config} focusedKey={focusedKey} />
         <BandBar smart={config.smart} />
         <SettingRow
           focused={focusedKey === 'workStart'}
@@ -124,7 +144,8 @@ export function ScheduleSection({
     ? config.schedule.map((h) => `${pad2(h)}:00`).join(', ')
     : 'none (idle)';
   return (
-    <Card title="SCHEDULE" active={focused}>
+    <Card title="SCHEDULE" active={SMART_KEYS.includes(focusedKey) || focused}>
+      <ModeRows config={config} focusedKey={focusedKey} />
       <HourGrid
         schedule={config.schedule}
         focused={focused}

@@ -2,6 +2,7 @@
 // agent-warmup CLI. With no subcommand it opens the Ink TUI; otherwise it runs
 // a headless action so it stays scriptable.
 import { loadConfig, saveConfig, MODELS, SCHEDULERS, MODES, getView } from './config.js';
+import { detectAll, detectProvider } from './detect.js';
 import * as launchd from './launchd.js';
 import { LABEL, PLIST_PATH, WARMUP_LOG, CONFIG_PATH, USAGE_CACHE } from './paths.js';
 import { printStatus } from './print-status.js';
@@ -11,7 +12,7 @@ import { runNow, viewLogs } from './runner.js';
 import * as schedule from './schedule.js';
 import { getStatus } from './status.js';
 import { runTick, readCache, writeCache } from './tick.js';
-import type { Config, ProviderId, ProviderInput, UiAction } from './types.js';
+import type { Config, ProviderConfig, ProviderId, ProviderInput, UiAction } from './types.js';
 
 const argv = process.argv.slice(2);
 const cmd: string | undefined = argv[0];
@@ -80,7 +81,9 @@ Usage:
   agent-warmup schedule H ...     Set fixed-mode hours on the selected provider
   agent-warmup model NAME         Set model on the selected provider
   agent-warmup scheduler NAME     Choose scheduler (${SCHEDULERS.join(' | ')})
+  agent-warmup detect [--apply]   Find installed agent CLIs (--apply saves paths)
   agent-warmup provider list      Show all built-in providers
+  agent-warmup provider ID detect Detect and save this provider's binary path
   agent-warmup provider ID enable|disable|select
   agent-warmup provider ID model NAME
   agent-warmup provider ID binary PATH
@@ -110,15 +113,19 @@ async function launchTUI(): Promise<void> {
   ]);
   for (;;) {
     let pending: UiAction | null = null;
+    // The TUI reports WHICH agent the run applies to (the one its panel is showing),
+    // so "Run warmup now" spends the quota of the agent the user is looking at.
+    let pendingId: ProviderId | undefined;
     const app = render(
       React.default.createElement(App, {
-        onAction: (a: UiAction) => {
+        onAction: (a: UiAction, id?: ProviderId) => {
           pending = a;
+          pendingId = id;
         },
       }),
     );
     await app.waitUntilExit();
-    if (pending === 'run') process.exit(runNow());
+    if (pending === 'run') process.exit(runNow(pendingId));
     if (pending !== 'logs') return;
     viewLogs(false);
   }
@@ -269,6 +276,10 @@ switch (cmd) {
     console.log(`✓ scheduler set: ${next.shared.scheduler}${wasActive ? ' (applied)' : ''}`);
     break;
   }
+  case 'detect': {
+    handleDetect(rest.includes('--apply'));
+    break;
+  }
   case 'provider': {
     handleProvider(rest);
     break;
@@ -287,6 +298,35 @@ switch (cmd) {
     process.exit(1);
 }
 
+// Scan for installed agent CLIs. Read-only by default; `--apply` writes the
+// detected absolute path for every provider whose configured path does not work,
+// which is what makes an agent usable from launchd/cron without hand-editing.
+function handleDetect(apply: boolean): void {
+  const multi = loadConfig();
+  const found = detectAll(multi);
+  const patched: Partial<Record<ProviderId, ProviderConfig>> = {};
+  for (const d of found) {
+    const mark = d.path ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
+    const where = d.path ?? `not found (looked for "${d.binary}")`;
+    const stale = d.path && !d.configuredOk ? `  (config points at ${d.configured})` : '';
+    console.log(`${mark} ${d.id.padEnd(9)} ${where}${stale}`);
+    const provider = multi.providers[d.id];
+    if (apply && provider && d.path && !d.configuredOk)
+      patched[d.id] = { ...provider, binary: d.path };
+  }
+  if (!apply) {
+    console.log('\nRun `agent-warmup detect --apply` to save the detected paths.');
+    return;
+  }
+  const ids = Object.keys(patched) as ProviderId[];
+  if (!ids.length) {
+    console.log('\n✓ nothing to change — every configured binary path is valid');
+    return;
+  }
+  saveConfig({ ...multi, providers: { ...multi.providers, ...patched } });
+  console.log(`\n✓ saved paths for: ${ids.join(', ')}${reapplyIfActive() ? ' (applied)' : ''}`);
+}
+
 function handleProvider(rest: string[]): void {
   const [id, action, ...args] = rest;
   if (id === 'list' || !id) {
@@ -297,8 +337,9 @@ function handleProvider(rest: string[]): void {
       const mark = p.enabled ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
       const sel = pid === multi.shared.selectedProvider ? ' (selected)' : '';
       const adapter = getProvider(pid);
+      const found = detectProvider(pid, p.binary).path;
       console.log(
-        `${mark} ${pid.padEnd(9)} ${adapter.name.padEnd(23)} enabled=${p.enabled}  usage=${adapter.probeKind}  model=${p.model}${sel}`,
+        `${mark} ${pid.padEnd(9)} ${adapter.name.padEnd(23)} enabled=${p.enabled}  usage=${adapter.probeKind}  model=${p.model}  bin=${found ?? 'not found'}${sel}`,
       );
     }
     return;
@@ -358,6 +399,19 @@ function handleProvider(rest: string[]): void {
       void next;
       break;
     }
+    case 'detect': {
+      const found = detectProvider(pid, provider.binary);
+      if (!found.path) {
+        console.error(`✗ ${pid}: no "${found.binary}" executable found on this machine`);
+        process.exit(1);
+      }
+      saveConfig({
+        ...multi,
+        providers: { ...multi.providers, [pid]: { ...provider, binary: found.path } },
+      });
+      console.log(`✓ ${pid} binary → ${found.path}${reapplyIfActive() ? ' (applied)' : ''}`);
+      break;
+    }
     case 'binary': {
       const binary = args[0];
       if (!binary) {
@@ -389,7 +443,7 @@ function handleProvider(rest: string[]): void {
     default:
       console.error(`Unknown provider subcommand: ${action}`);
       console.error(
-        'Usage: agent-warmup provider [list | <id> enable|disable|select|model <name>|binary <path>|schedule H ...]',
+        'Usage: agent-warmup provider [list | <id> enable|disable|select|detect|model <name>|binary <path>|schedule H ...]',
       );
       process.exit(1);
   }

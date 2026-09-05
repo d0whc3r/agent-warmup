@@ -10,11 +10,12 @@ import { test } from 'node:test';
 import { render } from 'ink';
 import React from 'react';
 
+import type { Detection } from '../src/detect.js';
 import type { Config, MultiConfig, Status, UsageCache } from '../src/types.js';
 import App from '../src/ui/App.jsx';
 import { HelpOverlay } from '../src/ui/components/HelpOverlay.jsx';
 import { StatusBar } from '../src/ui/components/StatusBar.jsx';
-import { buildRows, SHORTCUTS } from '../src/ui/model.js';
+import { ACTIONS, buildRows, SHORTCUTS, TABS, type TabKey } from '../src/ui/model.js';
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 const stripAnsi = (s: string): string => s.replace(ANSI, '');
@@ -69,7 +70,7 @@ const baseConfig: MultiConfig = {
     claude: {
       id: 'claude',
       enabled: true,
-      binary: '',
+      binary: '/opt/agents/claude',
       model: 'haiku',
       tmuxSession: 'claude-warmup',
       armScriptPath: '',
@@ -94,6 +95,29 @@ const baseConfig: MultiConfig = {
     },
   },
 };
+// Detection is a filesystem scan, so the TUI takes it as an injected prop and the
+// tests pin it: claude installed at its configured path, opencode installed
+// somewhere else, so both markers ("configured path works" vs "agent exists") get
+// exercised.
+const baseDetections: Detection[] = [
+  {
+    id: 'claude',
+    name: 'Claude Code',
+    binary: 'claude',
+    path: '/opt/agents/claude',
+    configured: '/opt/agents/claude',
+    configuredOk: true,
+  },
+  {
+    id: 'opencode',
+    name: 'OpenCode Go',
+    binary: 'opencode',
+    path: null,
+    configured: '',
+    configuredOk: false,
+  },
+];
+
 const baseView: Config = {
   mode: 'fixed',
   schedule: [8, 13, 18],
@@ -113,24 +137,60 @@ const baseStatus: Status = {
   usage: null,
 };
 
-function frameOf(config: MultiConfig, status: Status, screenReader: boolean, columns = 64): string {
+function frameOf(
+  config: MultiConfig,
+  status: Status,
+  screenReader: boolean,
+  columns = 64,
+  tab: TabKey = 'overview',
+): string {
   return renderFrame(
-    React.createElement(App, { initialConfig: config, initialStatus: status }),
+    React.createElement(App, {
+      initialConfig: config,
+      initialStatus: status,
+      initialDetections: baseDetections,
+      initialTab: tab,
+    }),
     screenReader,
     columns,
   );
 }
 
-test('visual mode conveys state without relying on colour', () => {
+const smartConfig: MultiConfig = { ...baseConfig, shared: { ...baseConfig.shared, mode: 'smart' } };
+const smartStatus: Status = {
+  ...baseStatus,
+  config: smartConfig,
+  view: { ...baseView, mode: 'smart' },
+};
+
+test('the tab bar marks the open tab without relying on colour', () => {
+  const overview = frameOf(baseConfig, baseStatus, false);
+  assert.match(overview, /\[1 Overview\]/);
+  assert.match(overview, / 2 Agents /);
+  assert.match(overview, / 3 Schedule/);
+
+  const agents = frameOf(baseConfig, baseStatus, false, 64, 'agents');
+  assert.match(agents, /\[2 Agents\]/);
+  assert.ok(!agents.includes('[1 Overview]'), 'only the open tab wears brackets');
+
+  const sr = frameOf(baseConfig, baseStatus, true);
+  assert.match(sr, /tablist:/);
+  assert.match(sr, /tab: \(selected\) Overview/);
+  assert.match(sr, /tab: Schedule/);
+});
+
+test('the overview tab summarises the scheduler and every agent', () => {
   const f = frameOf(baseConfig, baseStatus, false);
   assert.match(f, /agent-warmup/);
   assert.match(f, /● ACTIVE/);
-  assert.match(f, /▶ Mode/);
-  assert.match(f, /\[08\]/);
-  assert.match(f, /Selected: 08:00, 13:00, 18:00/);
-  assert.match(f, /SETTINGS/);
+  assert.match(f, /STATUS/);
+  assert.match(f, /Scheduler\s+cron · active/);
+  assert.match(f, /Next run\s+13:00/);
+  assert.match(f, /Agents\s+1 of 2 enabled/);
+  assert.match(f, /● claude\*/);
+  assert.match(f, /○ opencode/);
   assert.match(f, /ACTIONS/);
-  assert.match(f, /Save & apply/);
+  assert.match(f, /▶ Save & apply/);
   assert.match(f, /↑\/↓ move/);
   assert.match(f, /[╭╮╰╯]/);
 });
@@ -138,22 +198,50 @@ test('visual mode conveys state without relying on colour', () => {
 test('screen-reader mode emits clean linear text and hides glyph art', () => {
   const f = frameOf(baseConfig, baseStatus, true);
   assert.match(f, /status: active/);
-  assert.match(f, /\(selected\) Mode: fixed/);
-  assert.match(f, /Scheduler: cron/);
-  assert.match(f, /Hours\. Selected: 08:00, 13:00, 18:00\. Cursor at 08:00\./);
-  assert.match(f, /button: Save & apply/);
+  assert.match(f, /Scheduler: cron · active/);
+  assert.match(f, /claude: enabled, selected, model haiku/);
+  assert.match(f, /button: \(selected\) Save & apply/);
   assert.ok(!f.includes('▶'), 'pointer glyph should be hidden from screen readers');
-  assert.ok(!f.includes('[08]'), 'hour grid art should be hidden from screen readers');
+  assert.ok(!f.includes('●'), 'status dots should be hidden from screen readers');
   assert.ok(!/[╭╮╰╯│─]/.test(f), 'card borders must not reach screen readers');
 });
 
+test('the agents tab pairs the picker with the selected agent settings', () => {
+  const f = frameOf(baseConfig, baseStatus, false, 64, 'agents');
+  assert.match(f, /AGENTS/);
+  assert.match(f, /▶ \[x\] claude\*\s+✓ found/);
+  assert.match(f, /\[ \] opencode\s+✗ missing/);
+  assert.match(f, /SETTINGS · claude/, 'the settings card names the agent it edits');
+  // The settings marker answers a different question: does the configured path work?
+  assert.match(f, /Binary\s+✓ \/opt\/agents\/claude/);
+
+  const sr = frameOf(baseConfig, baseStatus, true, 64, 'agents');
+  assert.match(sr, /\(selected\) claude: enabled, selected, installed/);
+  assert.match(sr, /opencode: disabled, not installed/);
+  assert.match(sr, /Binary: \/opt\/agents\/claude \(found\)/);
+  assert.ok(!sr.includes('[x]'), 'checkbox art should be hidden from screen readers');
+});
+
+test('the schedule tab shows the mode rows and the fixed-mode hour grid', () => {
+  const f = frameOf(baseConfig, baseStatus, false, 64, 'schedule');
+  assert.match(f, /SCHEDULE/);
+  assert.match(f, /▶ Mode/);
+  assert.match(f, /Scheduler\s+cron/);
+  assert.match(f, /\[08\]/);
+  assert.match(f, /Selected: 08:00, 13:00, 18:00/);
+
+  const sr = frameOf(baseConfig, baseStatus, true, 64, 'schedule');
+  assert.match(sr, /\(selected\) Mode: fixed/);
+  assert.match(sr, /Hours\. Selected: 08:00, 13:00, 18:00\. Cursor at 08:00\./);
+  assert.ok(!sr.includes('[08]'), 'hour grid art should be hidden from screen readers');
+});
+
 test('smart mode shows the band bar visually and the band hours to screen readers', () => {
-  const smart: MultiConfig = { ...baseConfig, shared: { ...baseConfig.shared, mode: 'smart' } };
-  const visual = frameOf(smart, { ...baseStatus, config: smart }, false);
+  const visual = frameOf(smartConfig, smartStatus, false, 64, 'schedule');
   assert.match(visual, /█/);
   assert.match(visual, /Work start/);
 
-  const sr = frameOf(smart, { ...baseStatus, config: smart }, true);
+  const sr = frameOf(smartConfig, smartStatus, true, 64, 'schedule');
   assert.match(sr, /Work start: 09:00/);
   assert.match(sr, /Weekly stop: 80 percent/);
   assert.ok(!sr.includes('█'), 'band bar art should be hidden from screen readers');
@@ -161,15 +249,18 @@ test('smart mode shows the band bar visually and the band hours to screen reader
 
 test('narrow terminal reflows without overflowing its width', () => {
   const cols = 36;
-  const f = frameOf(baseConfig, baseStatus, false, cols);
-  assert.match(f, /\[08\]/);
-  assert.match(f, /Selected: 08:00, 13:00, 18:00/);
-  assert.ok(maxLineLen(f) <= cols, `no line should exceed ${cols} cols`);
+  for (const tab of ['overview', 'agents', 'schedule'] as const) {
+    const f = frameOf(baseConfig, baseStatus, false, cols, tab);
+    assert.ok(maxLineLen(f) <= cols, `${tab}: no line should exceed ${cols} cols`);
+  }
+  const schedule = frameOf(baseConfig, baseStatus, false, cols, 'schedule');
+  assert.match(schedule, /\[08\]/);
+  assert.match(schedule, /Selected: 08:00, 13:00, 18:00/);
 });
 
 test('wide terminal spreads into a two-column layout', () => {
   const f = frameOf(baseConfig, baseStatus, false, 120);
-  assert.match(f, /SETTINGS/);
+  assert.match(f, /STATUS/);
   assert.match(f, /ACTIONS/);
   assert.match(f, /Save & apply/);
   assert.ok(maxLineLen(f) > 60, 'wide layout should be wider than the single-column cap');
@@ -179,6 +270,7 @@ test('help overlay lists shortcuts and reads linearly to screen readers', () => 
   const el = React.createElement(HelpOverlay, { shortcuts: SHORTCUTS });
   const visual = renderFrame(el, false, 64);
   assert.match(visual, /KEYBOARD SHORTCUTS/);
+  assert.match(visual, /tab\s+Next tab/);
   assert.match(visual, /s\s+Save & apply/);
   assert.match(visual, /\? or esc to close/);
 
@@ -197,13 +289,17 @@ test('the usage card surfaces the cached session and weekly limits', () => {
       },
     },
   };
-  const f = frameOf(baseConfig, { ...baseStatus, usage }, false);
-  assert.match(f, /USAGE/);
-  assert.match(f, /Session/);
-  assert.match(f, /30%/);
-  assert.match(f, /Weekly/);
-  assert.match(f, /4%/);
-  assert.match(f, /ago/);
+  const agents = frameOf(baseConfig, { ...baseStatus, usage }, false, 64, 'agents');
+  assert.match(agents, /USAGE/);
+  assert.match(agents, /Session/);
+  assert.match(agents, /30%/);
+  assert.match(agents, /Weekly/);
+  assert.match(agents, /4%/);
+  assert.match(agents, /ago/);
+
+  // The overview compresses the same cache into one line per agent.
+  const overview = frameOf(baseConfig, { ...baseStatus, usage }, false);
+  assert.match(overview, /session 30% · week 4% · 2h ago/);
 });
 
 test('the status bar reflects editing, unsaved and confirmation states', () => {
@@ -212,10 +308,14 @@ test('the status bar reflects editing, unsaved and confirmation states', () => {
 
   assert.match(bar({ editing: true, dirty: false, message: '', hint: 'h' }), /Renaming session/);
   assert.match(
+    bar({ editing: true, editLabel: 'Editing binary path', dirty: false, message: '', hint: 'h' }),
+    /Editing binary path/,
+  );
+  assert.match(
     bar({ editing: false, dirty: true, message: 'Model → opus', hint: 'h' }),
     /● unsaved · Model → opus/,
   );
-  assert.match(bar({ editing: false, dirty: true, message: '', hint: 'h' }), /● unsaved — choose/);
+  assert.match(bar({ editing: false, dirty: true, message: '', hint: 'h' }), /● unsaved — press s/);
   assert.match(bar({ editing: false, dirty: false, message: 'Saved', hint: 'h' }), /✓ Saved/);
   const clean = bar({ editing: false, dirty: false, message: '', hint: 'move keys' });
   assert.match(clean, /up to date/);
@@ -223,12 +323,23 @@ test('the status bar reflects editing, unsaved and confirmation states', () => {
 });
 
 test('every action accelerator is a letter present in its label', () => {
-  for (const row of buildRows('fixed').filter((r) => r.type === 'action')) {
+  for (const row of ACTIONS) {
     assert.ok(row.accel, `action "${row.key}" should have an accelerator`);
     assert.equal(row.accel!.length, 1, `accelerator for "${row.key}" should be one char`);
     assert.ok(
       row.label.toLowerCase().includes(row.accel!.toLowerCase()),
       `accelerator "${row.accel}" should appear in label "${row.label}"`,
     );
+  }
+});
+
+test('every tab has a unique jump digit and its own focusable rows', () => {
+  assert.deepEqual(
+    TABS.map((t) => t.accel),
+    ['1', '2', '3'],
+  );
+  for (const tab of TABS) {
+    assert.ok(buildRows('smart', tab.key).length > 0, `${tab.key} should have rows`);
+    assert.ok(buildRows('fixed', tab.key).length > 0, `${tab.key} should have rows in fixed mode`);
   }
 });

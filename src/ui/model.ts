@@ -1,6 +1,6 @@
-// Pure layout data for the accessible Ink TUI: the focusable rows, their human
-// labels, and the per-row key hint shown while a row is focused. No React, no JSX —
-// the controller hook and the section components both read from here.
+// Pure layout data for the accessible Ink TUI: the tabs, the focusable rows of each
+// tab, their human labels, and the per-row key hint shown while a row is focused.
+// No React, no JSX — the controller hook and the section components both read here.
 import type { Mode } from '../types.js';
 
 export const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -21,10 +21,27 @@ export const LABEL_W = 13;
 // The movement keys never change; each row appends its own action keys via Row.hint.
 // Spelling the keys out per row (instead of one static legend) is the accessibility
 // win: the user is always told exactly what the focused control responds to.
-export const MOVE_HINT = '↑/↓ move';
+export const MOVE_HINT = '↑/↓ move · tab switches';
+
+// The panel is split into tabs so each concern gets its own screen instead of a
+// column of loose cards: what is going on (overview), which agent to warm and how
+// to reach it (agents), and when to warm it (schedule).
+export type TabKey = 'overview' | 'agents' | 'schedule';
+
+export interface TabDef {
+  key: TabKey;
+  label: string;
+  accel: string; // digit that jumps straight to the tab
+}
+
+export const TABS: readonly TabDef[] = [
+  { key: 'overview', label: 'Overview', accel: '1' },
+  { key: 'agents', label: 'Agents', accel: '2' },
+  { key: 'schedule', label: 'Schedule', accel: '3' },
+];
 
 // The kind of interaction a focusable row supports.
-type RowType = 'choice' | 'text' | 'schedule' | 'action';
+type RowType = 'choice' | 'text' | 'schedule' | 'action' | 'agents';
 
 export interface Row {
   key: string;
@@ -34,38 +51,9 @@ export interface Row {
   accel?: string; // single-key accelerator; underlined in its label (action rows only)
 }
 
-// Rows are mode-dependent: smart mode exposes its tunables as editable rows; fixed
-// mode shows the togglable hour grid instead. Array order = focus order (top→bottom).
-export const buildRows = (mode: Mode): Row[] => [
-  { key: 'mode', type: 'choice', label: 'Mode', hint: '←/→ switch smart / fixed' },
-  { key: 'scheduler', type: 'choice', label: 'Scheduler', hint: '←/→ switch scheduler' },
-  { key: 'model', type: 'choice', label: 'Model', hint: '←/→ cycle model' },
-  { key: 'tmux', type: 'text', label: 'tmux session', hint: 'enter to rename the session' },
-  ...(mode === 'smart'
-    ? [
-        {
-          key: 'workStart',
-          type: 'choice' as const,
-          label: 'Work start',
-          hint: '←/→ adjust start hour',
-        },
-        { key: 'workEnd', type: 'choice' as const, label: 'Work end', hint: '←/→ adjust end hour' },
-        { key: 'tick', type: 'choice' as const, label: 'Tick', hint: '←/→ change probe cadence' },
-        {
-          key: 'weeklyStop',
-          type: 'choice' as const,
-          label: 'Weekly stop',
-          hint: '←/→ adjust weekly cutoff',
-        },
-      ]
-    : [
-        {
-          key: 'schedule',
-          type: 'schedule' as const,
-          label: 'Hours',
-          hint: '←/→ move cursor · space toggles the hour',
-        },
-      ]),
+// The action rows live on the overview tab, but their single-key accelerators fire
+// from every tab, so the panel is never more than one keystroke away from saving.
+const ACTION_ROWS: Row[] = [
   {
     key: 'save',
     type: 'action',
@@ -97,6 +85,67 @@ export const buildRows = (mode: Mode): Row[] => [
   { key: 'quit', type: 'action', label: 'Quit', accel: 'q', hint: 'enter or q to quit' },
 ];
 
+// The agents tab: pick the agent, then edit what the warmup needs to reach it.
+const AGENT_ROWS: Row[] = [
+  {
+    key: 'agents',
+    type: 'agents',
+    label: 'Agent',
+    hint: '↑/↓ pick · space enable/disable · enter edit · d detect',
+  },
+  { key: 'model', type: 'choice', label: 'Model', hint: '←/→ cycle model' },
+  {
+    key: 'binary',
+    type: 'text',
+    label: 'Binary',
+    hint: 'enter to edit the path · d to autodetect',
+  },
+  { key: 'tmux', type: 'text', label: 'tmux session', hint: 'enter to rename the session' },
+];
+
+// The schedule tab is mode-dependent: smart mode exposes its tunables as editable
+// rows; fixed mode shows the togglable hour grid instead.
+const scheduleRows = (mode: Mode): Row[] => [
+  { key: 'mode', type: 'choice', label: 'Mode', hint: '←/→ switch smart / fixed' },
+  { key: 'scheduler', type: 'choice', label: 'Scheduler', hint: '←/→ switch scheduler' },
+  ...(mode === 'smart'
+    ? [
+        {
+          key: 'workStart',
+          type: 'choice' as const,
+          label: 'Work start',
+          hint: '←/→ adjust start hour',
+        },
+        { key: 'workEnd', type: 'choice' as const, label: 'Work end', hint: '←/→ adjust end hour' },
+        { key: 'tick', type: 'choice' as const, label: 'Tick', hint: '←/→ change probe cadence' },
+        {
+          key: 'weeklyStop',
+          type: 'choice' as const,
+          label: 'Weekly stop',
+          hint: '←/→ adjust weekly cutoff',
+        },
+      ]
+    : [
+        {
+          key: 'schedule',
+          type: 'schedule' as const,
+          label: 'Hours',
+          hint: '←/→ move cursor · space toggles the hour',
+        },
+      ]),
+];
+
+// Array order = focus order (top→bottom) within the active tab.
+export const buildRows = (mode: Mode, tab: TabKey = 'overview'): Row[] => {
+  if (tab === 'agents') return [...AGENT_ROWS];
+  if (tab === 'schedule') return scheduleRows(mode);
+  return [...ACTION_ROWS];
+};
+
+// Every action row, whatever tab is showing — the accelerators are global, so the
+// help overlay and the accelerator test read from here rather than from a tab.
+export const ACTIONS: readonly Row[] = ACTION_ROWS;
+
 // How many hour cells fit per row for a given usable content width. Each cell is 4
 // columns ("[08]" or " 08 "). Clamped to [4,12] so the grid never gets unreadably
 // dense, and never wider than the 12-per-row default it used to be hardcoded at.
@@ -119,15 +168,19 @@ export interface Shortcut {
 // accelerators fire from any row (the controller handles them before navigation);
 // the arrow/space/enter entries document the per-row navigation keys.
 export const SHORTCUTS: readonly Shortcut[] = [
-  { keys: '↑/↓', label: 'Move between rows' },
+  { keys: 'tab', label: 'Next tab (shift+tab back)' },
+  { keys: '1-3', label: 'Jump to a tab' },
+  { keys: '↑/↓', label: 'Move between rows (or agents)' },
   { keys: '←/→', label: 'Change the focused setting' },
-  { keys: 'space', label: 'Toggle an hour (fixed mode)' },
-  { keys: 'enter', label: 'Activate row / rename session' },
+  { keys: 'space', label: 'Toggle an hour / enable an agent' },
+  { keys: 'enter', label: 'Activate row / edit the agent / edit text' },
   { keys: 's', label: 'Save & apply' },
   { keys: 'r', label: 'Run warmup now' },
   { keys: 't', label: 'Stop (remove schedulers)' },
   { keys: 'l', label: 'View logs' },
   { keys: 'm', label: 'Toggle smart / fixed mode' },
+  { keys: 'p', label: 'Cycle the default agent for CLI runs' },
+  { keys: 'd', label: 'Detect the agent binary path' },
   { keys: '?', label: 'Toggle this help' },
   { keys: 'q', label: 'Quit' },
 ];

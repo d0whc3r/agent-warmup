@@ -6,11 +6,13 @@ import { Box, Text } from 'ink';
 
 export function StatusBar({
   editing,
+  editLabel = 'Renaming session',
   dirty,
   message,
   hint,
 }: {
   editing: boolean;
+  editLabel?: string;
   dirty: boolean;
   message: string;
   hint: string;
@@ -18,7 +20,7 @@ export function StatusBar({
   if (editing) {
     return (
       <Box marginTop={1}>
-        <Text color="cyan">Renaming session — enter saves · esc cancels</Text>
+        <Text color="cyan">{`${editLabel} — enter saves · esc cancels`}</Text>
       </Box>
     );
   }
@@ -27,7 +29,7 @@ export function StatusBar({
   let color: string | undefined;
   let dim = false;
   if (dirty) {
-    text = message ? `● unsaved · ${message}` : '● unsaved — choose "Save & apply"';
+    text = message ? `● unsaved · ${message}` : '● unsaved — press s to save & apply';
     color = 'yellow';
   } else if (message) {
     text = `✓ ${message}`;

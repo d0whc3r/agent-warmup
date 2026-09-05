@@ -96,6 +96,12 @@ Build with `pnpm build`. A standalone binary can be built on Node 26+ with
 ## Quick start
 
 ```bash
+# See which agent CLIs are installed on this machine.
+agent-warmup detect
+
+# Adopt the detected paths for any agent whose configured path does not work.
+agent-warmup detect --apply
+
 # See every built-in adapter. Only Claude starts enabled.
 agent-warmup provider list
 
@@ -113,8 +119,36 @@ agent-warmup run --provider codex
 agent-warmup start
 ```
 
-Running `agent-warmup` with no arguments opens the Ink terminal UI. Press `p`
-to cycle through enabled providers.
+## The terminal UI
+
+Running `agent-warmup` with no arguments opens the Ink terminal UI. It has three
+tabs — `tab` / `shift+tab` cycle them, `1`, `2` and `3` jump straight to one:
+
+| Tab          | What it holds                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------ |
+| **Overview** | Scheduler state, next run, the active window, the last tick, one usage line per agent, and the actions |
+| **Agents**   | The agent picker plus the selected agent's model, binary path and tmux session, with its usage         |
+| **Schedule** | Mode, scheduler, and either the smart-mode band or the fixed-mode hour grid                            |
+
+Every agent keeps its own model, binary path and tmux session. On the Agents tab
+the settings card below the list is bound to the agent under the cursor — its id
+is in the card title (`SETTINGS · codex`) — so configuring an agent never
+requires enabling or selecting it first:
+
+- `↑/↓` walk the agent list (focus only leaves the list at either end).
+- `space` enables or disables the agent under the cursor.
+- `enter` jumps into that agent's settings; `↑` returns to the list.
+- `←/→` cycle the model, `enter` edits the binary path or session name by hand.
+- `d` autodetects the binary of the agent on screen.
+
+The `Binary` row shows the configured path with a `✓`/`✗` marker for whether it
+actually works. `Run warmup now` (`r`) spends the quota of the agent on screen.
+The `*` in the list marks the default agent for CLI commands run without
+`--provider`; `p` cycles it.
+
+The action keys work from every tab: `s` save & apply, `r` run a warmup now,
+`t` stop the schedulers, `l` view logs, `m` toggle smart/fixed, `p` cycle the
+enabled agents, `?` the full key map, `q` quit.
 
 ## Commands
 
@@ -127,13 +161,24 @@ agent-warmup run [--provider ID]     Spend one tiny request now
 agent-warmup start|stop|restart      Manage launchd/cron
 agent-warmup mode smart|fixed
 agent-warmup scheduler launchd|cron
+agent-warmup detect [--apply]        Find installed agent CLIs
 agent-warmup provider list
 agent-warmup provider ID enable|disable|select
+agent-warmup provider ID detect      Detect and save this agent's binary path
 agent-warmup provider ID model NAME
 agent-warmup provider ID binary PATH
 agent-warmup provider ID schedule H ...
 agent-warmup logs [-f]
 ```
+
+## Finding the agent binaries
+
+`agent-warmup detect` looks for each agent's CLI in its default install prefix,
+then on `$PATH`, then in the usual prefixes (`~/.local/bin`, `~/.bun/bin`,
+`/opt/homebrew/bin`, …). A configured path that still works is never replaced.
+`--apply` writes the absolute detected path for every agent whose configured
+path is missing, which is what the launchd/cron tick needs: the scheduler runs
+with a minimal `PATH`, so a bare command name is not enough.
 
 ## Scheduling modes
 
