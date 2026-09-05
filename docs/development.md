@@ -13,6 +13,16 @@ agent-warmup status
 `pnpm build` bundles the CLI into `dist/`. On Node 26+, `pnpm build:sea` builds
 the standalone binary at `dist/agent-warmup`.
 
+## Testing
+
+```bash
+pnpm test            # full suite
+pnpm test:coverage   # suite + coverage table (fails below 97% lines / 94% funcs / 85% branches)
+pnpm coverage:lcov   # suite + coverage/lcov.info for tooling
+```
+
+`dist/` is excluded from the report; `coverage/` is gitignored.
+
 ## Releasing
 
 Push a version tag. GitHub Actions builds the four SEA binaries, attaches them

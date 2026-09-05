@@ -71,3 +71,20 @@ test('fixed mode with no scheduled hours has no next run', () => {
     null,
   );
 });
+
+test('smart mode with no enabled provider has no next run', () => {
+  assert.equal(
+    nextRun(
+      {
+        ...base,
+        shared: { ...base.shared, mode: 'smart' },
+        providers: {
+          ...base.providers,
+          claude: { ...base.providers.claude!, enabled: false },
+        },
+      },
+      at(10),
+    ),
+    null,
+  );
+});

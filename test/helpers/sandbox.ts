@@ -24,7 +24,10 @@ case "$1" in
   *)  exit 1 ;;
 esac
 `;
-const LAUNCHCTL_SHIM = '#!/usr/bin/env bash\nexit 0\n';
+const LAUNCHCTL_SHIM = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$FAKE_LAUNCHCTL_LOG"
+exit 0
+`;
 
 export const DEFAULT_ENV_LINES = [
   'WARMUP_MODE=fixed',
@@ -60,6 +63,8 @@ export interface Sandbox {
   config: () => string;
   crontab: () => string;
   crontabWrites: () => number;
+  /** Every `launchctl` invocation the CLI made, one argv line per entry. */
+  launchctlLog: () => string[];
 }
 
 export function sandbox(options: SandboxOptions = {}): Sandbox {
@@ -81,6 +86,7 @@ export function sandbox(options: SandboxOptions = {}): Sandbox {
   fs.writeFileSync(configPath, envLines.join('\n') + '\n');
   const crontabFile = path.join(home, 'crontab.txt');
   fs.writeFileSync(crontabFile, crontabText);
+  const launchctlLog = path.join(home, 'launchctl.log');
   return {
     home,
     warmupHome,
@@ -95,6 +101,7 @@ export function sandbox(options: SandboxOptions = {}): Sandbox {
           HOME: home,
           WARMUP_HOME: warmupHome,
           FAKE_CRONTAB: crontabFile,
+          FAKE_LAUNCHCTL_LOG: launchctlLog,
         },
       }),
     config: () => fs.readFileSync(configPath, 'utf8'),
@@ -104,6 +111,13 @@ export function sandbox(options: SandboxOptions = {}): Sandbox {
         return fs.readFileSync(`${crontabFile}.writes`, 'utf8').trim().split('\n').length;
       } catch {
         return 0;
+      }
+    },
+    launchctlLog: () => {
+      try {
+        return fs.readFileSync(launchctlLog, 'utf8').trim().split('\n').filter(Boolean);
+      } catch {
+        return [];
       }
     },
   };

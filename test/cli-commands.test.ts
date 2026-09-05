@@ -195,10 +195,15 @@ test('provider <id> detect saves one path and fails loudly when there is none', 
   assert.match(missing.stderr, /✗ kimi: no "kimi" executable found on this machine/);
 });
 
-test('enable and disable toggle the installed launchd agent', () => {
+test('enable and disable drive the launchd agent through launchctl', () => {
   const s = sandbox();
   assert.match(s.run('enable').stdout, /✓ enabled/);
   assert.match(s.run('disable').stdout, /✓ disabled/);
+  // Success is only believable if the right gui domain + label was addressed.
+  const { username, uid } = os.userInfo();
+  const target = `gui/${uid}/com.${username}.claude-warmup`;
+  assert.ok(s.launchctlLog().includes(`enable ${target}`), 'enable missed the launchd label');
+  assert.ok(s.launchctlLog().includes(`disable ${target}`), 'disable missed the launchd label');
 });
 
 test('run refuses an unknown agent and a disabled one', () => {

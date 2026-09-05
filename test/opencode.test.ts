@@ -5,8 +5,10 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 import { DEFAULT_MULTI } from '../src/config.js';
+import { getProvider } from '../src/providers/index.js';
 import { parseStatsCost, probe } from '../src/providers/opencode.js';
 import type { ProbeContext } from '../src/providers/types.js';
+import type { ProviderUsage } from '../src/types.js';
 
 // A realistic `opencode stats --days 7 --models 1` capture. The model column
 // is left-padded; the cost column is right-padded; values use the
@@ -113,4 +115,36 @@ test('probe gives up when the binary is missing or the stats call fails', () => 
   assert.equal(probe(ctxFor('/nonexistent/opencode')), null);
   const failing = stubOpencode('[ "$1" = "--version" ] && exit 0\nexit 3');
   assert.equal(probe(ctxFor(failing)), null);
+});
+
+// decide() reads the cache signals the tick injects (lastWarmAt, cooldownUntil);
+// these pin the order in which they short-circuit.
+const opencode = getProvider('opencode');
+const decideCtx = (hour: number): ProbeContext => ({
+  cfg: { ...DEFAULT_MULTI.providers.opencode!, workStart: 8, workEnd: 23, weeklyStopPercent: 90 },
+  shared: { ...DEFAULT_MULTI.shared, mode: 'smart' },
+  now: new Date(2026, 8, 5, hour),
+});
+
+test('opencode decide: offhours, weekly cap, cooldown and cache window in order', () => {
+  assert.equal(opencode.decide(decideCtx(3), null).action, 'skip-offhours');
+  assert.equal(
+    opencode.decide(decideCtx(12), { session: null, week: { pct: 95 } }).action,
+    'skip-weekly',
+  );
+
+  const at = decideCtx(12).now.getTime();
+  const enriched = (over: object): ProviderUsage =>
+    ({ session: null, week: null, ...over }) as ProviderUsage;
+
+  // An active cooldown wins, reporting the remaining minutes.
+  const cooldown = enriched({ cooldownUntil: at + 30 * 60_000 });
+  assert.match(opencode.decide(decideCtx(12), cooldown).reason, /cooldown \(30m remaining\)/);
+
+  // An expired cooldown falls through to the cache-derived five-hour window.
+  const expired = enriched({ cooldownUntil: at - 1000, lastWarmAt: at - 3_600_000 });
+  assert.equal(opencode.decide(decideCtx(12), expired).action, 'skip-active');
+
+  // No signals at all -> warm.
+  assert.equal(opencode.decide(decideCtx(12), enriched({})).action, 'warm');
 });

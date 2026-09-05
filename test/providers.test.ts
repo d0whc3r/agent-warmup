@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
 import { DEFAULT_MULTI, parseMultiConfig, serializeMultiConfig } from '../src/config.js';
@@ -131,4 +134,115 @@ test('usageView estimates a window for providers without a live snapshot', () =>
     )?.session,
     '40% (idle)',
   );
+});
+
+test('each provider maps its own binary env and display name for the arm script', () => {
+  const now = new Date('2026-09-05T10:00:00Z');
+  for (const id of ALL_PROVIDER_IDS) {
+    const provider = getProvider(id);
+    const ctx: ProbeContext = {
+      cfg: DEFAULT_MULTI.providers[id]!,
+      shared: DEFAULT_MULTI.shared,
+      now,
+    };
+    const env = provider.armEnv(ctx);
+    assert.equal(env.WARMUP_PROVIDER_NAME, provider.name, `${id} carries its display name`);
+    assert.ok(
+      Object.values(env).includes(ctx.cfg.binary),
+      `${id} exports its configured binary path`,
+    );
+  }
+});
+
+test('a successful arm clears the failure bookkeeping and the cooldown', () => {
+  const now = new Date('2026-09-04T10:00:00Z');
+  const { cache } = recordArmWithCooldown(
+    { lastFailureAt: now.getTime() - 1000, cooldownUntil: now.getTime() + 3_600_000 },
+    0,
+    now,
+  );
+  assert.equal(cache.lastWarmAt, now.getTime());
+  assert.equal(cache.lastFailureAt, undefined);
+  assert.equal(cache.cooldownUntil, undefined);
+});
+
+test('decideWindow short-circuits offhours, the weekly cap and then cooldowns', () => {
+  const at = (hour: number): ProbeContext => ({
+    cfg: { ...DEFAULT_MULTI.providers.kimi!, workStart: 8, workEnd: 23, weeklyStopPercent: 90 },
+    shared: { ...DEFAULT_MULTI.shared, mode: 'smart' },
+    now: new Date(2026, 8, 5, hour),
+  });
+  assert.equal(decideWindow(at(3), null).action, 'skip-offhours');
+  assert.equal(decideWindow(at(12), { session: null, week: { pct: 90 } }).action, 'skip-weekly');
+  const now = at(12).now.getTime();
+  const cooldown = { session: null, week: null, cooldownUntil: now + 120_000 } as ProviderUsage;
+  assert.match(decideWindow(at(12), cooldown).reason, /cooldown \(2m remaining\)/);
+});
+
+test('codex probes read the newest session log, skipping lines it cannot parse', async () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-codex-'));
+  process.env.CODEX_HOME = codexHome;
+  const now = new Date('2026-09-05T10:00:00Z');
+  const ctx: ProbeContext = {
+    cfg: DEFAULT_MULTI.providers.codex!,
+    shared: { ...DEFAULT_MULTI.shared, mode: 'smart' },
+    now,
+  };
+  const rateLine = (pct: number, resetsInSec: number): string =>
+    JSON.stringify({
+      timestamp: now.toISOString(),
+      payload: {
+        type: 'token_count',
+        rate_limits: {
+          primary: {
+            used_percent: pct,
+            window_minutes: 300,
+            resets_at: Math.floor(now.getTime() / 1000) + resetsInSec,
+          },
+          secondary: null,
+        },
+      },
+    });
+  try {
+    // No sessions dir yet.
+    assert.equal(await getProvider('codex').probe(ctx), null);
+
+    const sessions = path.join(codexHome, 'sessions', '2026', '09');
+    fs.mkdirSync(sessions, { recursive: true });
+    const old = path.join(sessions, 'rollout-old.jsonl');
+    fs.writeFileSync(old, rateLine(10, 3600));
+    fs.utimesSync(old, now, new Date(now.getTime() - 3_600_000));
+    // The newest file wins by mtime even if the other holds newer-looking data,
+    // and garbage lines in between are skipped.
+    fs.writeFileSync(
+      path.join(sessions, 'rollout-new.jsonl'),
+      ['garbage', '{"payload":{}}', rateLine(74.4, 3600)].join('\n'),
+    );
+
+    const usage = await getProvider('codex').probe(ctx);
+    assert.ok(usage);
+    assert.equal(usage.session?.pct, 74);
+    assert.equal(usage.week, null, 'the secondary limit is null in this capture');
+
+    // An empty sessions dir has no newest file.
+    fs.rmSync(path.join(codexHome, 'sessions'), { recursive: true });
+    fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
+    assert.equal(await getProvider('codex').probe(ctx), null);
+  } finally {
+    delete process.env.CODEX_HOME;
+  }
+});
+
+test('cache-only providers report estimated usage and probe to nothing', () => {
+  const now = new Date('2026-09-05T10:00:00Z');
+  for (const id of ['zai', 'kimi', 'minimax'] as const) {
+    const provider = getProvider(id);
+    assert.equal(provider.probeKind, 'estimated');
+    const ctx: ProbeContext = {
+      cfg: DEFAULT_MULTI.providers[id]!,
+      shared: DEFAULT_MULTI.shared,
+      now,
+    };
+    assert.equal(provider.probe?.(ctx) ?? null, null);
+  }
 });
