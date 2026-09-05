@@ -74,6 +74,10 @@ function harness(columns = 64) {
   const instance = render(React.createElement(App, {}), {
     stdout,
     stdin,
+    // Ink only writes a frame per render when it thinks the environment is
+    // interactive; under CI it holds everything back until unmount, so the
+    // frames these tests read never arrive. The fake stdout IS the terminal here.
+    interactive: true,
     patchConsole: false,
   } as never);
   // Ink batches renders, so a keypress has to yield before the assertion reads the
