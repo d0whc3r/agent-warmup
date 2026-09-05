@@ -1,8 +1,8 @@
 import { pad2, ago } from './format.js';
-import { formatUsage } from './providers/claude.js';
 // Headless status output for the CLI (the `status` command and the post-action
 // summaries). The interactive equivalent lives in the Ink TUI; both read
 // getStatus() and share the same display formatting helpers.
+import { usageView } from './providers/index.js';
 import { getStatus } from './status.js';
 
 const dot = (on: boolean): string => (on ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m');
@@ -33,11 +33,10 @@ export function printStatus(): void {
   for (const id of providerIds) {
     const p = config.providers[id];
     if (!p) continue;
-    const cache = s.usage?.providers?.[id];
     const sel = id === config.shared.selectedProvider;
     const marker = sel ? '\x1b[36m▸\x1b[0m' : ' ';
     console.log(`  ${marker} ${id.padEnd(9)} model=${p.model}  session=${p.tmuxSession}`);
-    const u = formatUsage(cache ?? null);
+    const u = usageView(id, s.usage, config);
     if (u) {
       console.log(`              session    ${u.session}`);
       console.log(

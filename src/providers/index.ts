@@ -1,8 +1,8 @@
 // src/providers/index.ts -- registry. The single source of truth for which
 // providers ship built-in; loadConfig() reads `WARMUP_PROVIDERS` (CSV) and the
 // order there is the order the tick iterates.
-import type { ProviderId } from '../types.js';
-import { claudeProvider } from './claude.js';
+import type { MultiConfig, ProviderId, UsageCache, UsageView } from '../types.js';
+import { claudeProvider, formatUsage } from './claude.js';
 import { opencodeProvider } from './opencode.js';
 import { codexProvider, kimiProvider, minimaxProvider, zaiProvider } from './subscriptions.js';
 import type { Provider } from './types.js';
@@ -34,3 +34,20 @@ export const ALL_PROVIDER_IDS: readonly ProviderId[] = [
   'opencode',
   'minimax',
 ];
+
+// Display view of one provider's usage. Providers without a live probe (or whose
+// probe has not succeeded yet) have no session/week in the cache, so derive the
+// snapshot from their last successful arm the same way the tick does.
+export function usageView(
+  id: ProviderId,
+  cache: UsageCache | null | undefined,
+  multi: MultiConfig,
+  now: Date = new Date(),
+): UsageView | null {
+  const entry = cache?.providers?.[id] ?? null;
+  if (entry?.session || entry?.week) return formatUsage(entry);
+  const cfg = multi.providers[id];
+  if (!cfg) return null;
+  const inferred = getProvider(id).inferFromCache({ cfg, shared: multi.shared, now }, entry);
+  return formatUsage({ ...entry, ...inferred });
+}

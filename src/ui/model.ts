@@ -64,9 +64,9 @@ const ACTION_ROWS: Row[] = [
   {
     key: 'run',
     type: 'action',
-    label: 'Run warmup now',
+    label: 'Run warmup (all enabled)',
     accel: 'r',
-    hint: 'enter or r to run a warmup now',
+    hint: 'enter or r to warm every enabled agent now',
   },
   {
     key: 'stop',
@@ -175,7 +175,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { keys: 'space', label: 'Toggle an hour / enable an agent' },
   { keys: 'enter', label: 'Activate row / edit the agent / edit text' },
   { keys: 's', label: 'Save & apply' },
-  { keys: 'r', label: 'Run warmup now' },
+  { keys: 'r', label: 'Warm every enabled agent now' },
   { keys: 't', label: 'Stop (remove schedulers)' },
   { keys: 'l', label: 'View logs' },
   { keys: 'm', label: 'Toggle smart / fixed mode' },

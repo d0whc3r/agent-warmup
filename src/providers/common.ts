@@ -39,6 +39,12 @@ export function decideWindow(ctx: ProbeContext, usage: ProviderUsage | null): De
     const remaining = Math.ceil((cooldownUntil - ctx.now.getTime()) / 60_000);
     return { action: 'skip-active', reason: `cooldown (${remaining}m remaining)` };
   }
+  // A probe read from a log file (codex) can predate our own last arm; the arm
+  // we did is the freshest signal, so honor it before the probe's session flag.
+  const lastWarmAt = (usage as { lastWarmAt?: number } | null)?.lastWarmAt ?? 0;
+  if (lastWarmAt > 0 && differenceInMilliseconds(ctx.now, lastWarmAt) < DEFAULT_WINDOW_MS) {
+    return { action: 'skip-active', reason: 'window likely active (cache-derived)' };
+  }
   if (usage?.session?.active) {
     return {
       action: 'skip-active',

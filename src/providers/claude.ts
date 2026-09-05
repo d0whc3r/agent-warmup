@@ -142,9 +142,15 @@ export function formatUsage(cache: ProviderCache | null | undefined): {
   if (!cache || (!cache.session && !cache.week)) return null;
   const s = cache.session;
   const w = cache.week;
-  const session = s
-    ? `${s.pct ?? '—'}%${s.active ? '' : ' (idle)'}${s.resetsAt ? ` · resets ${formatClock(s.resetsAt)}` : ''}`
-    : '—';
+  // Inferred snapshots carry no real percentage (pct is a 1/0 active flag), so
+  // describe the estimated window instead of printing a number.
+  const session = cache.inferred
+    ? s?.active
+      ? `active (estimated) · resets ${formatClock(s.resetsAt, '?')}`
+      : 'idle (estimated)'
+    : s
+      ? `${s.pct ?? '—'}%${s.active ? '' : ' (idle)'}${s.resetsAt ? ` · resets ${formatClock(s.resetsAt)}` : ''}`
+      : '—';
   const week = w
     ? `${w.pct ?? '—'}%${w.resetsAt ? ` · resets ${formatShortDate(w.resetsAt)}` : ''}`
     : '—';

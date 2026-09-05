@@ -3,7 +3,9 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 
 import { ensureArmScript } from './assets.js';
+import { readCache, writeCache } from './cache.js';
 import { loadConfig } from './config.js';
+import { appendLog } from './logs.js';
 import { WARMUP_LOG, LOG_DIR, WARMUP_HOME } from './paths.js';
 import { getProvider } from './providers/index.js';
 import type { ProviderId } from './types.js';
@@ -11,7 +13,10 @@ import type { ProviderId } from './types.js';
 // Spawn the arm script for the given provider (or the selected one when
 // omitted) and return its exit status. Forwards the right env so the script
 // can read provider-specific knobs (binary, model, tmux session, workdir).
-export function runNow(id?: ProviderId): number {
+// Records the outcome (lastWarmAt, or the provider's cooldown bookkeeping) in
+// the usage cache so estimated-usage providers know a window is active whether
+// the arm came from the scheduler tick or a manual run.
+export function runNow(id?: ProviderId, now: Date = new Date()): number {
   const multi = loadConfig();
   const selected = id ?? multi.shared.selectedProvider;
   const provider = multi.providers[selected];
@@ -28,7 +33,7 @@ export function runNow(id?: ProviderId): number {
   const adapter = getProvider(selected);
   const script = ensureArmScript(selected);
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  const ctx = { cfg: provider, shared: multi.shared, now: new Date() };
+  const ctx = { cfg: provider, shared: multi.shared, now };
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     WARMUP_BIN: expandHome(provider.binary),
@@ -42,7 +47,38 @@ export function runNow(id?: ProviderId): number {
     if (env[key]) env[key] = expandHome(env[key]);
   }
   const r = spawnSync('/bin/bash', [script], { stdio: 'inherit', env });
-  return r.status ?? 1;
+  const status = r.status ?? 1;
+
+  const cache = readCache();
+  const entry = cache.providers[selected] ?? {};
+  if (adapter.recordArmResult) {
+    const recorded = adapter.recordArmResult(ctx, entry, status);
+    cache.providers[selected] = recorded.cache;
+    if (recorded.log) appendLog(now, `TICK [${selected}] ${recorded.log}`);
+  } else if (status === 0) {
+    cache.providers[selected] = { ...entry, lastWarmAt: now.getTime() };
+  }
+  writeCache(cache);
+  return status;
+}
+
+// Warm every enabled agent, in the order the tick would visit them. This is what
+// "Run warmup now" means: the same set the scheduler would arm, just immediately.
+// Returns the first non-zero exit status so a failure anywhere reaches the caller.
+export function runEnabled(): number {
+  const multi = loadConfig();
+  const ids = multi.shared.providers.filter((id) => multi.providers[id]?.enabled);
+  if (!ids.length) {
+    process.stderr.write('✗ no agents are enabled\n');
+    return 1;
+  }
+  let worst = 0;
+  for (const id of ids) {
+    if (ids.length > 1) process.stdout.write(`\n── ${id} ──\n`);
+    const status = runNow(id);
+    if (status !== 0 && worst === 0) worst = status;
+  }
+  return worst;
 }
 
 // Open the warmup log in a navigable view. On an interactive terminal we hand off to

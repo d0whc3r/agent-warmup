@@ -22,8 +22,7 @@ import { useState } from 'react';
 import { loadConfig, saveConfig, getView, MODELS, SCHEDULERS, TICK_CHOICES } from '../config.js';
 import { detectAll, detectProvider, type Detection } from '../detect.js';
 import { pad2, tildify } from '../format.js';
-import { formatUsage } from '../providers/claude.js';
-import { ALL_PROVIDER_IDS, getProvider } from '../providers/index.js';
+import { ALL_PROVIDER_IDS, getProvider, usageView } from '../providers/index.js';
 import * as schedule from '../schedule.js';
 import { getStatus } from '../status.js';
 import type { Config, MultiConfig, ProviderId, SmartConfig, Status, UiAction } from '../types.js';
@@ -50,7 +49,7 @@ export function useWarmupUi({
   initialDetections,
   initialTab,
 }: {
-  onAction?: (a: UiAction, id?: ProviderId) => void;
+  onAction?: (a: UiAction) => void;
   initialConfig?: MultiConfig;
   initialStatus?: Status;
   initialDetections?: readonly Detection[];
@@ -315,7 +314,7 @@ export function useWarmupUi({
       setMessage('Stopped — schedulers removed');
       refresh();
     } else if (key === 'run') {
-      onAction?.('run', agentId);
+      onAction?.('run');
       exit();
     } else if (key === 'logs') {
       onAction?.('logs');
@@ -429,13 +428,11 @@ export function useWarmupUi({
   });
 
   // Usage is read from the cache of the agent the panel is showing.
-  const agentCache = status.usage?.providers?.[agentId] ?? null;
-
   return {
     multi,
     config: view,
     status,
-    usage: formatUsage(agentCache),
+    usage: usageView(agentId, status.usage, multi),
     agentId,
     agentModel: String(agentCfg?.model ?? view.model),
     agentTmuxSession: agentCfg?.tmuxSession ?? view.tmuxSession,

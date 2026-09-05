@@ -9,12 +9,9 @@
 // docs/superpowers/specs/2026-06-15-multi-provider-warmup-design.md. The
 // provider-specific logic lives in src/providers/<id>.ts; this file only
 // handles the cross-cutting concerns (cache, log lines, exit status).
-import fs from 'node:fs';
-import path from 'node:path';
-
+import { readCache, writeCache } from './cache.js';
 import { loadConfig } from './config.js';
 import { appendLog, pruneLogs } from './logs.js';
-import { USAGE_CACHE } from './paths.js';
 import { getProvider } from './providers/index.js';
 import type { ProbeContext, Provider } from './providers/types.js';
 import { runNow } from './runner.js';
@@ -41,39 +38,7 @@ export interface TickResult {
   dryRun: boolean;
 }
 
-// Read the on-disk cache. Migrates the LEGACY flat shape (session/week/... at
-// the top level) to the new per-provider map on first read.
-export function readCache(): UsageCache {
-  let text: string;
-  try {
-    text = fs.readFileSync(USAGE_CACHE, 'utf8');
-  } catch {
-    return { providers: {} };
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { providers: {} };
-  }
-  if (!parsed || typeof parsed !== 'object') return { providers: {} };
-  const obj = parsed as Record<string, unknown>;
-  // New shape: { providers: { claude: {...}, opencode: {...} }, selectedProvider? }
-  if (obj.providers && typeof obj.providers === 'object') {
-    return obj as unknown as UsageCache;
-  }
-  // Legacy shape: { session, week, lastDecision, lastWarmAt, ... } at the top.
-  // Wrap as { providers: { claude: <legacy> }, selectedProvider: 'claude' }.
-  return {
-    providers: { claude: obj as unknown as ProviderCache },
-    selectedProvider: 'claude',
-  };
-}
-
-export function writeCache(cache: UsageCache): void {
-  fs.mkdirSync(path.dirname(USAGE_CACHE), { recursive: true });
-  fs.writeFileSync(USAGE_CACHE, JSON.stringify(cache, null, 2) + '\n');
-}
+export { readCache, writeCache } from './cache.js';
 
 // One smart-mode tick: probe -> decide -> maybe arm, for each enabled provider.
 export function runTick({
@@ -164,19 +129,12 @@ function tickOne({
     if (usage.weekSonnet) next.weekSonnet = usage.weekSonnet;
   }
   cache.providers[id] = next;
+  // Write before arming: runNow() records the arm result (lastWarmAt/cooldown)
+  // into the on-disk cache itself, so a later write here would clobber it.
+  writeCache(cache);
 
   let status = 0;
-  if (decision.action === 'warm' && !dryRun) {
-    status = runNow(id);
-    if (provider.recordArmResult) {
-      const recorded = provider.recordArmResult(ctx, next, status);
-      Object.assign(next, recorded.cache);
-      if (recorded.log) appendLog(now, `TICK [${id}] ${recorded.log}`);
-    } else if (status === 0) {
-      next.lastWarmAt = now.getTime();
-    }
-  }
-  writeCache(cache);
+  if (decision.action === 'warm' && !dryRun) status = runNow(id, now);
 
   const src = probed ? 'probe' : usage.inferred ? 'cache' : 'injected';
   appendLog(

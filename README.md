@@ -17,17 +17,20 @@ alias, and existing installs under `~/.claude/warmup` are detected automatically
 | ID         | Service              | Runner                               | Usage strategy                        | Default model                      |
 | ---------- | -------------------- | ------------------------------------ | ------------------------------------- | ---------------------------------- |
 | `claude`   | Claude Code          | interactive Claude session in `tmux` | live `/usage`                         | `haiku`                            |
-| `codex`    | OpenAI Codex         | `codex exec`, ephemeral/read-only    | local five-hour estimate              | `gpt-5.6-luna`                     |
+| `codex`    | OpenAI Codex         | `codex exec`, ephemeral/read-only    | rate limits from local session logs   | `gpt-5.6-luna`                     |
 | `zai`      | Z.AI GLM Coding Plan | authenticated OpenCode provider      | local five-hour estimate              | `zai-coding-plan/glm-5.3-flash`    |
 | `kimi`     | Kimi Code            | `kimi -p`                            | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding`        |
 | `opencode` | OpenCode Go          | `opencode run` + `opencode stats`    | live weekly + local session estimate  | `opencode-go/deepseek-v4-flash`    |
 | `minimax`  | MiniMax Token Plan   | authenticated OpenCode provider      | local five-hour estimate              | `minimax-coding-plan/MiniMax-M2.7` |
 
 Claude is enabled by default. Every other provider is opt-in because a warmup
-consumes real quota. Codex, Z.AI, Kimi, and MiniMax currently expose no stable
+consumes real quota. Z.AI, Kimi, and MiniMax currently expose no stable
 machine-readable quota endpoint suitable for unattended polling, so the CLI
 conservatively treats a successful warmup within the last five hours as an
-active window.
+active window (shown as `active (estimated)` in status and the TUI). Codex
+reads the five-hour and weekly percentages its own sessions log under
+`~/.codex/sessions`; warmups are ephemeral and do not refresh that log, so the
+figures are as of your last interactive Codex session.
 
 MiniMax is included because its Token Plan also has a five-hour allowance. Kimi
 is included as requested, but its official documentation calls the five-hour
@@ -115,7 +118,7 @@ agent-warmup provider codex select
 agent-warmup model gpt-5.6-luna
 
 # Verify one warmup manually, then install the scheduler.
-agent-warmup run --provider codex
+agent-warmup run --provider codex   # one agent; without --provider, all enabled
 agent-warmup start
 ```
 
@@ -142,9 +145,9 @@ requires enabling or selecting it first:
 - `d` autodetects the binary of the agent on screen.
 
 The `Binary` row shows the configured path with a `✓`/`✗` marker for whether it
-actually works. `Run warmup now` (`r`) spends the quota of the agent on screen.
-The `*` in the list marks the default agent for CLI commands run without
-`--provider`; `p` cycles it.
+actually works. `Run warmup (all enabled)` (`r`) warms every enabled agent, the
+same set `Save & apply` schedules. The `*` in the list marks the default agent
+for CLI commands run without `--provider`; `p` cycles it.
 
 The action keys work from every tab: `s` save & apply, `r` run a warmup now,
 `t` stop the schedulers, `l` view logs, `m` toggle smart/fixed, `p` cycle the
@@ -157,7 +160,7 @@ agent-warmup                         Open the interactive TUI
 agent-warmup status                  Show scheduler and provider status
 agent-warmup usage [--provider ID]   Probe usage or show the local estimate
 agent-warmup tick [--dry-run] [--provider ID]
-agent-warmup run [--provider ID]     Spend one tiny request now
+agent-warmup run [--provider ID]     Warm every enabled agent now (or just one)
 agent-warmup start|stop|restart      Manage launchd/cron
 agent-warmup mode smart|fixed
 agent-warmup scheduler launchd|cron

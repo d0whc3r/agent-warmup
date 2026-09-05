@@ -8,7 +8,7 @@ import { LABEL, PLIST_PATH, WARMUP_LOG, CONFIG_PATH, USAGE_CACHE } from './paths
 import { printStatus } from './print-status.js';
 import { formatUsage } from './providers/claude.js';
 import { ALL_PROVIDER_IDS, getProvider } from './providers/index.js';
-import { runNow, viewLogs } from './runner.js';
+import { runEnabled, runNow, viewLogs } from './runner.js';
 import * as schedule from './schedule.js';
 import { getStatus } from './status.js';
 import { runTick, readCache, writeCache } from './tick.js';
@@ -74,7 +74,7 @@ Usage:
   agent-warmup status             Show current status (per-provider)
   agent-warmup usage [--provider ID]  Probe or estimate current limits
   agent-warmup tick [--dry-run] [--provider ID]  Decide and maybe warm
-  agent-warmup run [--provider ID]  Run a warmup right now (foreground)
+  agent-warmup run [--provider ID]  Warm every enabled agent now (or just one)
   agent-warmup start|stop|restart Manage the active scheduler
   agent-warmup enable|disable      Toggle the installed launchd agent
   agent-warmup mode NAME          Set mode (${MODES.join(' | ')})
@@ -113,19 +113,15 @@ async function launchTUI(): Promise<void> {
   ]);
   for (;;) {
     let pending: UiAction | null = null;
-    // The TUI reports WHICH agent the run applies to (the one its panel is showing),
-    // so "Run warmup now" spends the quota of the agent the user is looking at.
-    let pendingId: ProviderId | undefined;
     const app = render(
       React.default.createElement(App, {
-        onAction: (a: UiAction, id?: ProviderId) => {
+        onAction: (a: UiAction) => {
           pending = a;
-          pendingId = id;
         },
       }),
     );
     await app.waitUntilExit();
-    if (pending === 'run') process.exit(runNow(pendingId));
+    if (pending === 'run') process.exit(runEnabled());
     if (pending !== 'logs') return;
     viewLogs(false);
   }
@@ -205,9 +201,10 @@ switch (cmd) {
   }
   case 'run':
   case 'now': {
-    const { id, rest: _r2 } = parseProviderFlag(rest);
-    if (!id) throw new Error('selected provider is unavailable');
-    process.exit(runNow(id));
+    // No --provider means every enabled agent, matching the TUI's "Run warmup"
+    // action and the set the scheduler's tick would arm.
+    const { id, rest: _r2 } = parseProviderFlag(rest, false);
+    process.exit(id ? runNow(id) : runEnabled());
   }
   case 'start': {
     const ok = schedule.applySchedule(loadConfig());
