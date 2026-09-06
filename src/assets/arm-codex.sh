@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# Arms OpenAI Codex with one ephemeral, read-only, non-interactive turn.
+# Arms OpenAI Codex with one read-only, non-interactive turn.
+#
+# Deliberately NOT --ephemeral: the rollout file this writes under
+# CODEX_HOME/sessions is the only place codex records its server-side rate limits
+# (`token_count` events). With --ephemeral the arm succeeds but nothing on disk
+# changes, so the probe keeps replaying whatever the user's last interactive
+# session left behind and the reset clock goes stale. See probeCodex().
 set -euo pipefail
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
@@ -21,7 +27,7 @@ log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG" >
 [ -x "$WARMUP_BIN" ] || { log "ERROR: codex not executable at $WARMUP_BIN"; exit 1; }
 log "START codex (model=$MODEL workdir=$WORKDIR)"
 set +e
-"$WARMUP_BIN" exec --ephemeral --sandbox read-only --skip-git-repo-check \
+"$WARMUP_BIN" exec --sandbox read-only --skip-git-repo-check \
   --ignore-user-config --ignore-rules -C "$WORKDIR" -m "$MODEL" "$PROMPT" > "$CAPTURE" 2>&1
 STATUS=$?
 set -e

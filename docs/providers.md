@@ -3,7 +3,7 @@
 | ID         | Service              | Runner                               | Usage strategy                        | Default model                      |
 | ---------- | -------------------- | ------------------------------------ | ------------------------------------- | ---------------------------------- |
 | `claude`   | Claude Code          | interactive Claude session in `tmux` | live `/usage`                         | `haiku`                            |
-| `codex`    | OpenAI Codex         | `codex exec`, ephemeral/read-only    | rate limits from local session logs   | `gpt-5.6-luna`                     |
+| `codex`    | OpenAI Codex         | `codex exec`, read-only              | rate limits from local session logs   | `gpt-5.6-luna`                     |
 | `zai`      | Z.AI GLM Coding Plan | authenticated OpenCode provider      | local five-hour estimate              | `zai-coding-plan/glm-5.3-flash`    |
 | `kimi`     | Kimi Code            | `kimi -p`                            | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding`        |
 | `opencode` | OpenCode Go          | `opencode run` + `opencode stats`    | live weekly + local session estimate  | `opencode-go/deepseek-v4-flash`    |
@@ -16,6 +16,12 @@ For Z.AI and MiniMax, connect the corresponding Coding Plan inside OpenCode
 first (`opencode auth login`). Credentials stay in each vendor CLI's own auth
 store; `agent-warmup` never persists API keys.
 
+Neither plan ships a CLI of its own — both drive the `opencode` binary — so
+having OpenCode installed says nothing about whether they can run. `detect` and
+`provider list` therefore report them as missing until OpenCode holds their
+credential (`zai-coding-plan`, `minimax-coding-plan`), rather than showing three
+usable agents where there is one binary and one working login.
+
 ## How usage is read
 
 Z.AI, Kimi and MiniMax expose no stable machine-readable quota endpoint suitable
@@ -24,8 +30,11 @@ within the last five hours as an active window — shown as `active (estimated)`
 in status and the TUI.
 
 Codex reads the five-hour and weekly percentages its own sessions log under
-`~/.codex/sessions`. Warmups are ephemeral and do not refresh that log, so the
-figures are as of your last interactive Codex session.
+`~/.codex/sessions`: the rollout file each session writes is the only place the
+CLI records its server-side rate limits. The warmup runs `codex exec` **without**
+`--ephemeral` for exactly that reason — an ephemeral turn arms the window but
+writes nothing, leaving the reset clock frozen at your last interactive session.
+The cost is one small rollout file per warmup, which Codex never prunes.
 
 ## Why these providers
 
@@ -43,6 +52,6 @@ adapters. Enable only plans whose reset timing you intentionally want to align.
 Provider limits and model catalogs change over time, so model IDs and binary
 paths stay configurable instead of being baked into the scheduler.
 
-The warmup workdir contains no project code: Codex runs ephemeral and read-only,
-Kimi loads an empty skills directory, Claude starts in safe mode. Logs and
+The warmup workdir contains no project code: Codex runs read-only, Kimi loads an
+empty skills directory, Claude starts in safe mode. Logs and
 output captures are retained for 14 days by default.

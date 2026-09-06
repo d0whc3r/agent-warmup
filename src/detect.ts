@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { DEFAULT_MULTI } from './config.js';
-import { expandHome } from './paths.js';
+import { expandHome, opencodeAuthPath } from './paths.js';
 import { ALL_PROVIDER_IDS, getProvider } from './providers/index.js';
 import type { MultiConfig, ProviderId } from './types.js';
 
@@ -34,6 +34,9 @@ export interface Detection {
   path: string | null; // first executable found, absolute
   configured: string; // the path currently in the config (as written)
   configuredOk: boolean; // whether that path is executable right now
+  // Why `path` is null even though the binary is on disk (an opencode-backed plan
+  // with no credential). Null when the binary itself is simply missing.
+  blocked: string | null;
 }
 
 function isExecutable(p: string): boolean {
@@ -45,13 +48,41 @@ function isExecutable(p: string): boolean {
   }
 }
 
+// Whether opencode holds a credential for this plan. Anything unreadable (no file,
+// bad JSON) counts as "not configured" — the plan cannot arm either way.
+function hasOpencodeCredential(key: string): boolean {
+  try {
+    const auth = JSON.parse(fs.readFileSync(opencodeAuthPath(), 'utf8')) as Record<string, unknown>;
+    return Object.hasOwn(auth, key);
+  } catch {
+    return false;
+  }
+}
+
 // Find the agent's binary. The configured path wins when it still works, so a
 // hand-picked location is never silently replaced by one found on PATH.
 export function detectProvider(id: ProviderId, configured?: string): Detection {
+  const provider = getProvider(id);
   const fallback = DEFAULT_MULTI.providers[id]!.binary;
   const raw = configured || fallback;
   const configuredPath = expandHome(raw);
   const binary = path.basename(fallback);
+
+  // The opencode-backed plans share one binary with opencode itself, so finding it
+  // proves nothing: without the plan's credential the arm reaches opencode and comes
+  // back a server error. Report those as not installed, with the reason.
+  if (provider.credentialKey && !hasOpencodeCredential(provider.credentialKey)) {
+    return {
+      id,
+      name: provider.name,
+      binary,
+      path: null,
+      configured: raw,
+      configuredOk: false,
+      blocked: `no "${provider.credentialKey}" credential in opencode`,
+    };
+  }
+
   const dirs = [
     path.dirname(expandHome(fallback)),
     ...(process.env.PATH ?? '').split(path.delimiter).filter(Boolean),
@@ -71,11 +102,12 @@ export function detectProvider(id: ProviderId, configured?: string): Detection {
   }
   return {
     id,
-    name: getProvider(id).name,
+    name: provider.name,
     binary,
     path: found,
     configured: raw,
     configuredOk,
+    blocked: null,
   };
 }
 

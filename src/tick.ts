@@ -84,7 +84,7 @@ async function tickOne(
       next.capturedAt = snapshot.capturedAt;
       next.session = snapshot.session;
       next.week = snapshot.week;
-      if (snapshot.weekSonnet) next.weekSonnet = snapshot.weekSonnet;
+      if (snapshot.weekModel) next.weekModel = snapshot.weekModel;
     }
     return next;
   });

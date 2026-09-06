@@ -47,9 +47,56 @@ test('a stale configured path is reported and the real binary is offered instead
   assert.equal(d.path, onPath);
 });
 
+// zai, minimax and opencode-go all arm through the same `opencode` binary, so its
+// presence says nothing about whether a given plan can run: what gates them is the
+// credential opencode stores under the plan's id.
+function writeOpencodeAuth(keys: string[]): void {
+  const dir = path.join(sandbox, '.local', 'share', 'opencode');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'auth.json'),
+    JSON.stringify(Object.fromEntries(keys.map((k) => [k, { type: 'api' }]))),
+  );
+}
+
+test('an opencode-backed plan is not detected without its credential', () => {
+  fakeBinary(binDir, 'opencode');
+  writeOpencodeAuth(['opencode-go']);
+
+  const zai = detectProvider('zai', '');
+  assert.equal(zai.path, null, 'the opencode binary alone must not light zai up');
+  assert.equal(zai.configuredOk, false);
+  assert.match(zai.blocked!, /zai-coding-plan/);
+
+  assert.equal(detectProvider('minimax', '').blocked !== null, true);
+
+  // The plan opencode *does* hold a credential for is detected as normal.
+  const go = detectProvider('opencode', '');
+  assert.equal(go.blocked, null);
+  assert.ok(go.path);
+});
+
+test('adding the credential is enough to detect the plan', () => {
+  fakeBinary(binDir, 'opencode');
+  writeOpencodeAuth(['opencode-go', 'zai-coding-plan']);
+  const zai = detectProvider('zai', '');
+  assert.equal(zai.blocked, null);
+  assert.equal(zai.path, path.join(binDir, 'opencode'));
+});
+
+test('a missing or unreadable opencode auth file blocks the plans, not the agents', () => {
+  fs.rmSync(path.join(sandbox, '.local', 'share', 'opencode', 'auth.json'), { force: true });
+  fakeBinary(binDir, 'opencode');
+  assert.equal(detectProvider('zai', '').path, null);
+  // Agents with a CLI of their own are unaffected by opencode's credential store.
+  assert.ok(detectProvider('codex', '').path);
+});
+
 test('a directory is never mistaken for an executable', () => {
-  fs.mkdirSync(path.join(binDir, 'opencode'), { recursive: true });
-  const d = detectProvider('opencode', path.join(binDir, 'opencode'));
+  writeOpencodeAuth(['opencode-go']); // get past the credential gate to reach the scan
+  const asDir = path.join(sandbox, 'as-dir', 'opencode');
+  fs.mkdirSync(asDir, { recursive: true });
+  const d = detectProvider('opencode', asDir);
   assert.equal(d.configuredOk, false);
 });
 

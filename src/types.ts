@@ -9,12 +9,21 @@ export type Scheduler = 'launchd' | 'cron';
 // prefix (WARMUP_<UPPER_ID>_*); the registry is the runtime source of truth.
 export type ProviderId = 'claude' | 'opencode' | 'codex' | 'zai' | 'kimi' | 'minimax';
 
-// A parsed /usage block (session / weekly / sonnet). `resetsAt` is a Date when freshly
-// parsed; the cache round-trip turns it into an ISO string, so consumers must coerce.
+// A parsed /usage block (session / weekly / per-model). `resetsAt` is a Date when
+// freshly parsed; the cache round-trip turns it into an ISO string, so consumers
+// must coerce.
 export interface LimitBlock {
   pct: number | null;
   resetsAt?: Date | null;
   active?: boolean;
+}
+
+// The extra weekly block Claude renders for whichever model it caps separately
+// ("Current week (Sonnet only)" once, "Current week (Fable)" today). The heading
+// moves with Claude's lineup, so it travels with the block rather than being baked
+// into a field name.
+export interface ModelLimitBlock extends LimitBlock {
+  label: string;
 }
 
 // Per-provider usage snapshot. Same shape as the legacy UsageSnapshot so the
@@ -22,7 +31,7 @@ export interface LimitBlock {
 export interface ProviderUsage {
   session: LimitBlock | null;
   week: LimitBlock | null;
-  weekSonnet?: LimitBlock | null;
+  weekModel?: ModelLimitBlock | null;
   capturedAt?: number;
   inferred?: boolean;
 }

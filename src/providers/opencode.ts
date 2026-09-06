@@ -12,6 +12,19 @@ import type { ProbeContext, Provider } from './types.js';
 
 const GO_WEEKLY_USD = 30; // 30 USD per week
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+// A model block in the boxed layout is Messages / Input / Output / Cache Read /
+// Cache Write / Cost — six rows. Ten keeps a row or two of slack without ever
+// reaching the *next* model's Cost row.
+const COST_ROW_LOOKAHEAD = 10;
+
+// A dollar figure anywhere on a line. opencode stats keeps moving its format, so
+// accept "$0.12", "USD 0.12" and thousands separators alike.
+function parseAmount(line: string): number | null {
+  const m =
+    line.match(/\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)/) ||
+    line.match(/USD\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  return m ? Number(m[1]!.replace(/,/g, '')) : null;
+}
 
 function isExecutable(p: string): boolean {
   try {
@@ -33,13 +46,18 @@ export function parseStatsCost(text: string, model: string): number | null {
   // or just "deepseek-v4-flash"; we match the tail.
   const needle = model.includes('/') ? model.split('/').slice(1).join('/') : model;
   const lines = text.split('\n');
-  for (const line of lines) {
-    if (!line.includes(needle)) continue;
-    // Heuristic: a dollar amount somewhere on the line. opencode stats is still
-    // settling its format (v1.17.7+); accept either "$0.12" or "USD 0.12".
-    const m =
-      line.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/) || line.match(/USD\s*([0-9]+(?:\.[0-9]+)?)/i);
-    if (m) return Number(m[1]);
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]!.includes(needle)) continue;
+    // Flat layout (opencode <= 1.17): "model  1,234 in / 567 out   $0.12".
+    const inline = parseAmount(lines[i]!);
+    if (inline != null) return inline;
+    // Boxed layout (opencode >= 1.18): the model heads a block of label/value rows
+    // and its spend sits on the "Cost" row a few lines down.
+    for (let j = i + 1; j < Math.min(lines.length, i + 1 + COST_ROW_LOOKAHEAD); j++) {
+      if (!/\bCost\b/i.test(lines[j]!)) continue;
+      const cost = parseAmount(lines[j]!);
+      if (cost != null) return cost;
+    }
   }
   return null;
 }
@@ -121,6 +139,7 @@ export const opencodeProvider: Provider = {
     'opencode-go/kimi-k2.7-code',
   ],
   probeKind: 'live',
+  credentialKey: 'opencode-go',
   probe,
   inferFromCache: inferWindowFromCache,
   decide,

@@ -101,6 +101,15 @@ export const ARM_SCRIPT = (id: ProviderId): string => {
   return !IN_SEA && fs.existsSync(source) ? source : path.join(WARMUP_HOME, `arm-${id}.sh`);
 };
 
+// opencode keeps every provider credential in one JSON file keyed by provider id.
+// The subscription plans that arm through opencode have no CLI of their own, so this
+// file — not the opencode binary — is what says whether they are usable at all.
+// Resolved lazily (like expandHome) so a test can point HOME at a sandbox.
+export function opencodeAuthPath(): string {
+  const dataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+  return path.join(dataHome, 'opencode', 'auth.json');
+}
+
 // launchd
 export const LABEL = 'com.d0whc3r.claude-warmup';
 export const PLIST_PATH = path.join(HOME, 'Library', 'LaunchAgents', `${LABEL}.plist`);

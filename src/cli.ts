@@ -207,7 +207,7 @@ switch (cmd) {
       capturedAt: usage.capturedAt,
       session: usage.session,
       week: usage.week,
-      weekSonnet: usage.weekSonnet,
+      weekModel: usage.weekModel,
     };
     writeCache(cache);
     const u = formatUsage(cache.providers[id] ?? null);
@@ -215,8 +215,8 @@ switch (cmd) {
       console.log(`session  ${u.session}`);
       console.log(`weekly   ${u.week}`);
     }
-    if (usage.weekSonnet && Number.isFinite(usage.weekSonnet.pct))
-      console.log(`sonnet   ${usage.weekSonnet.pct}%`);
+    if (usage.weekModel && Number.isFinite(usage.weekModel.pct))
+      console.log(`${usage.weekModel.label.padEnd(8)} ${usage.weekModel.pct}%`);
     if (!live) console.log(`source   estimated from local warmup history (${adapter.name})`);
     break;
   }
@@ -351,7 +351,7 @@ function handleDetect(apply: boolean): void {
   const patched: Partial<Record<ProviderId, ProviderConfig>> = {};
   for (const d of found) {
     const mark = d.path ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
-    const where = d.path ?? `not found (looked for "${d.binary}")`;
+    const where = d.path ?? d.blocked ?? `not found (looked for "${d.binary}")`;
     const stale = d.path && !d.configuredOk ? `  (config points at ${d.configured})` : '';
     console.log(`${mark} ${d.id.padEnd(9)} ${where}${stale}`);
     const provider = multi.providers[d.id];
@@ -381,9 +381,10 @@ function handleProvider(rest: string[]): void {
       const mark = p.enabled ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
       const sel = pid === multi.shared.selectedProvider ? ' (selected)' : '';
       const adapter = getProvider(pid);
-      const found = detectProvider(pid, p.binary).path;
+      const found = detectProvider(pid, p.binary);
+      const bin = found.path ?? found.blocked ?? 'not found';
       console.log(
-        `${mark} ${pid.padEnd(9)} ${adapter.name.padEnd(23)} enabled=${p.enabled}  usage=${adapter.probeKind}  model=${p.model}  bin=${found ?? 'not found'}${sel}`,
+        `${mark} ${pid.padEnd(9)} ${adapter.name.padEnd(23)} enabled=${p.enabled}  usage=${adapter.probeKind}  model=${p.model}  bin=${bin}${sel}`,
       );
     }
     return;

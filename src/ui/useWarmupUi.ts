@@ -192,7 +192,9 @@ export function useWarmupUi({
     if (!p) return;
     const found = detectProvider(id, p.binary);
     setDetections((ds) => ds.map((d) => (d.id === id ? found : d)));
-    if (!found.path) return setMessage(`${id}: no "${found.binary}" found on this machine`);
+    if (!found.path) {
+      return setMessage(found.blocked ?? `${id}: no "${found.binary}" found on this machine`);
+    }
     if (found.configuredOk) return setMessage(`${id} binary ok — ${tildify(found.path)}`);
     const saved = saveConfig(patchProvider(multi, id, { binary: found.path }));
     setMulti(saved);

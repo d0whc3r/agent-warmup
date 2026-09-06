@@ -66,6 +66,52 @@ test('parseStatsCost handles whole-dollar amounts (no decimals)', () => {
   assert.equal(parseStatsCost(out, 'deepseek-v4-flash'), 1);
 });
 
+// Verbatim from `opencode stats --days 7 --models 1` on v1.18.20. The flat one-row-
+// per-model layout the parser was written against is gone: each model now heads a
+// block of label/value rows and its spend sits on the "Cost" row several lines down,
+// so the same-line match returned null for every model and the weekly cap check
+// silently stopped running.
+const BOXED = `┌────────────────────────────────────────────────────────┐
+│                    COST & TOKENS                       │
+├────────────────────────────────────────────────────────┤
+│Total Cost                                        $9.99 │
+│Avg Cost/Day                                      $1.42 │
+└────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────┐
+│                      MODEL USAGE                       │
+├────────────────────────────────────────────────────────┤
+│ opencode-go/deepseek-v4-flash                          │
+│  Messages                                            1 │
+│  Input Tokens                                        0 │
+│  Output Tokens                                       0 │
+│  Cache Read                                          0 │
+│  Cache Write                                         0 │
+│  Cost                                          $7.5000 │
+├────────────────────────────────────────────────────────┤
+│ opencode-go/glm-5.3-flash                              │
+│  Messages                                            4 │
+│  Input Tokens                                    1,024 │
+│  Output Tokens                                     256 │
+│  Cache Read                                          0 │
+│  Cache Write                                         0 │
+│  Cost                                          $1.2500 │
+└────────────────────────────────────────────────────────┘
+`;
+
+test('parseStatsCost reads the boxed per-model layout (opencode >= 1.18)', () => {
+  assert.equal(parseStatsCost(BOXED, 'opencode-go/deepseek-v4-flash'), 7.5);
+  // The second block must report its own Cost row, not the first block's.
+  assert.equal(parseStatsCost(BOXED, 'opencode-go/glm-5.3-flash'), 1.25);
+  // "Total Cost" belongs to the summary box and must never stand in for a model.
+  assert.equal(parseStatsCost(BOXED, 'opencode-go/no-such-model'), null);
+});
+
+test('parseStatsCost strips thousands separators', () => {
+  const out = '  deepseek-v4-flash      1,234 in / 567 out   $1,234.50\n';
+  assert.equal(parseStatsCost(out, 'deepseek-v4-flash'), 1234.5);
+});
+
 // The probe itself: `opencode stats` is spawned for real against a stub binary, so
 // the mapping from a dollar figure to the weekly percentage stays covered.
 function stubOpencode(body: string): string {

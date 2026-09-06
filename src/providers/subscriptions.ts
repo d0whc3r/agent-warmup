@@ -18,6 +18,8 @@ interface SubscriptionProviderOptions {
   script: 'codex' | 'kimi' | 'opencode';
   binaryEnv: string;
   probe?: Provider['probe'];
+  // Only for the opencode-backed plans; see Provider.credentialKey.
+  credentialKey?: string;
 }
 
 // Codex has no quota command, but every interactive session logs its server-side
@@ -63,22 +65,37 @@ export function parseCodexRateLimits(text: string, now: Date): ProviderUsage | n
   return null;
 }
 
-// Newest session log under CODEX_HOME/sessions (rollout files are appended while
-// a session runs, so mtime, not the filename date, picks the freshest limits).
+// How many rollouts to open before giving up. The newest one normally answers —
+// the warmup writes a fresh rollout on every arm — so the rest only cover a session
+// that died before its first `token_count` event.
+const ROLLOUTS_SCANNED = 5;
+
+// Newest session log under CODEX_HOME/sessions. Rollouts live at
+// YYYY/MM/DD/rollout-<ISO>-<uuid>.jsonl, so sorting the relative paths is already a
+// newest-first sort — no statSync over a tree that gains a file per arm and is never
+// pruned. Stop at the first rollout that actually carries rate limits.
 function probeCodex(ctx: ProbeContext): ProviderUsage | null {
   const dir = path.join(process.env.CODEX_HOME || path.join(HOME, '.codex'), 'sessions');
-  let newest: { file: string; mtime: number } | null = null;
+  let rollouts: string[];
   try {
-    for (const rel of fs.readdirSync(dir, { recursive: true }) as string[]) {
-      if (!rel.endsWith('.jsonl')) continue;
-      const file = path.join(dir, rel);
-      const mtime = fs.statSync(file).mtimeMs;
-      if (!newest || mtime > newest.mtime) newest = { file, mtime };
-    }
-    return newest ? parseCodexRateLimits(fs.readFileSync(newest.file, 'utf8'), ctx.now) : null;
+    rollouts = (fs.readdirSync(dir, { recursive: true }) as string[])
+      .filter((rel) => rel.endsWith('.jsonl'))
+      .sort()
+      .reverse()
+      .slice(0, ROLLOUTS_SCANNED);
   } catch {
     return null;
   }
+
+  for (const rel of rollouts) {
+    try {
+      const usage = parseCodexRateLimits(fs.readFileSync(path.join(dir, rel), 'utf8'), ctx.now);
+      if (usage) return usage;
+    } catch {
+      // Unreadable or half-written rollout: try the next-newest.
+    }
+  }
+  return null;
 }
 
 function createSubscriptionProvider(options: SubscriptionProviderOptions): Provider {
@@ -87,6 +104,7 @@ function createSubscriptionProvider(options: SubscriptionProviderOptions): Provi
     name: options.name,
     modelChoices: options.models,
     probeKind: options.probe ? 'live' : 'estimated',
+    ...(options.credentialKey ? { credentialKey: options.credentialKey } : {}),
     probe: options.probe ?? (() => null),
     inferFromCache: inferWindowFromCache,
     decide: decideWindow,
@@ -120,6 +138,7 @@ export const zaiProvider = createSubscriptionProvider({
   ],
   script: 'opencode',
   binaryEnv: 'OPENCODE_BIN',
+  credentialKey: 'zai-coding-plan',
 });
 
 export const kimiProvider = createSubscriptionProvider({
@@ -140,4 +159,5 @@ export const minimaxProvider = createSubscriptionProvider({
   ],
   script: 'opencode',
   binaryEnv: 'OPENCODE_BIN',
+  credentialKey: 'minimax-coding-plan',
 });

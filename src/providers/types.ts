@@ -30,6 +30,12 @@ export interface Provider {
   readonly name: string;
   readonly modelChoices: readonly string[];
   readonly probeKind: 'live' | 'estimated';
+  // Set on the plans that ride opencode's CLI instead of shipping one: the key
+  // opencode stores their credential under in auth.json. opencode being installed
+  // says nothing about whether such a plan is usable, so detection requires the
+  // credential too — otherwise three agents light up green off one binary and only
+  // one of them can actually arm.
+  readonly credentialKey?: string;
   // Read the provider's current usage. Returns null on transient failure — the
   // caller falls back to inferFromCache. May be async: the tick probes every
   // provider at once, so a slow probe (Claude drives a tmux session for ~20s) must

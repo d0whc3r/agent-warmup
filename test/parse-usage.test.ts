@@ -22,9 +22,9 @@ const SAMPLE = `
 
 const NOW = new Date(2026, 5, 13, 13, 0, 0); // Sat Jun 13 2026, 13:00 local
 
-test('parseUsage reads session, weekly and sonnet blocks', () => {
+test('parseUsage reads session, weekly and per-model blocks', () => {
   const u = parseUsage(SAMPLE, NOW);
-  assert.ok(u.session && u.week && u.weekSonnet);
+  assert.ok(u.session && u.week && u.weekModel);
   assert.equal(u.session.pct, 30);
   assert.equal(u.session.active, true);
   assert.equal(u.session.resetsAt!.getHours(), 15);
@@ -35,8 +35,58 @@ test('parseUsage reads session, weekly and sonnet blocks', () => {
   assert.equal(u.week.resetsAt!.getDate(), 14);
   assert.equal(u.week.resetsAt!.getHours(), 11);
 
-  assert.equal(u.weekSonnet.pct, 0);
-  assert.equal(u.weekSonnet.resetsAt, null);
+  assert.equal(u.weekModel.label, 'Sonnet only');
+  assert.equal(u.weekModel.pct, 0);
+  assert.equal(u.weekModel.resetsAt, null);
+});
+
+// Verbatim from `claude --model haiku` + /usage on 2026-09-06 (v2.1.263). The second
+// weekly heading now names the current secondary model, so a parser keyed on the
+// literal "Current week (Sonnet only)" silently returned nothing for it.
+const SAMPLE_2026_09 = `
+   Current session
+   ████████████████████████████████████████████▌    93% used
+   Resets 8:59am (Europe/Madrid)
+
+   Current week (all models)
+   ██████████████████                               36% used
+   Resets Sep 6 at 10:59am (Europe/Madrid)
+   +50% weekly limits promo through Sep 13 · clau.de/cc-50-promo
+
+   Current week (Fable)
+   ███████████████████████▌                         45% used
+   Resets Sep 6 at 10:59am (Europe/Madrid)
+`;
+
+test('parseUsage keeps up with a renamed per-model weekly heading', () => {
+  const now = new Date(2026, 8, 6, 7, 0, 0); // Sun Sep 6 2026, 07:00 local
+  const u = parseUsage(SAMPLE_2026_09, now);
+
+  assert.equal(u.session!.pct, 93);
+  assert.equal(u.session!.active, true);
+  assert.equal(u.session!.resetsAt!.getHours(), 8);
+  assert.equal(u.session!.resetsAt!.getMinutes(), 59);
+
+  assert.equal(u.week!.pct, 36);
+  assert.equal(u.week!.resetsAt!.getDate(), 6);
+  assert.equal(u.week!.resetsAt!.getHours(), 10);
+
+  // The block Claude used to call "Sonnet only" — matched by shape, labelled live.
+  assert.equal(u.weekModel!.label, 'Fable');
+  assert.equal(u.weekModel!.pct, 45);
+  assert.equal(u.weekModel!.resetsAt!.getHours(), 10);
+});
+
+test('parseUsage reports no per-model block when Claude renders only the two', () => {
+  const twoBlocks = `
+  Current session
+                                                     0% used
+
+  Current week (all models)
+  ██                                                 4% used
+  Resets Jun 14 at 11am (Europe/Madrid)
+`;
+  assert.equal(parseUsage(twoBlocks, NOW).weekModel, null);
 });
 
 test('a fresh 0% session is not active', () => {

@@ -179,7 +179,7 @@ test('decideWindow short-circuits offhours, the weekly cap and then cooldowns', 
   assert.match(decideWindow(at(12), cooldown).reason, /cooldown \(2m remaining\)/);
 });
 
-test('codex probes read the newest session log, skipping lines it cannot parse', async () => {
+test('codex probes read the newest rollout by name, skipping lines it cannot parse', async () => {
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-codex-'));
   process.env.CODEX_HOME = codexHome;
   const now = new Date('2026-09-05T10:00:00Z');
@@ -207,15 +207,19 @@ test('codex probes read the newest session log, skipping lines it cannot parse',
     // No sessions dir yet.
     assert.equal(await getProvider('codex').probe(ctx), null);
 
+    // Real rollout paths are YYYY/MM/DD/rollout-<ISO>-<uuid>.jsonl, so sorting them
+    // is already a newest-first sort — the probe never stats the tree, which gains a
+    // file on every arm and is never pruned.
     const sessions = path.join(codexHome, 'sessions', '2026', '09');
-    fs.mkdirSync(sessions, { recursive: true });
-    const old = path.join(sessions, 'rollout-old.jsonl');
-    fs.writeFileSync(old, rateLine(10, 3600));
-    fs.utimesSync(old, now, new Date(now.getTime() - 3_600_000));
-    // The newest file wins by mtime even if the other holds newer-looking data,
-    // and garbage lines in between are skipped.
+    fs.mkdirSync(path.join(sessions, '04'), { recursive: true });
+    fs.mkdirSync(path.join(sessions, '05'), { recursive: true });
     fs.writeFileSync(
-      path.join(sessions, 'rollout-new.jsonl'),
+      path.join(sessions, '04', 'rollout-2026-09-04T23-10-00-aaaa.jsonl'),
+      rateLine(10, 3600),
+    );
+    // Garbage lines in between are skipped; the newest rollout wins.
+    fs.writeFileSync(
+      path.join(sessions, '05', 'rollout-2026-09-05T09-40-00-bbbb.jsonl'),
       ['garbage', '{"payload":{}}', rateLine(74.4, 3600)].join('\n'),
     );
 
@@ -224,7 +228,15 @@ test('codex probes read the newest session log, skipping lines it cannot parse',
     assert.equal(usage.session?.pct, 74);
     assert.equal(usage.week, null, 'the secondary limit is null in this capture');
 
-    // An empty sessions dir has no newest file.
+    // A session that died before its first token_count event carries no limits; the
+    // probe falls through to the next-newest rollout rather than reporting nothing.
+    fs.writeFileSync(
+      path.join(sessions, '05', 'rollout-2026-09-05T09-55-00-cccc.jsonl'),
+      '{"type":"session_meta"}\n',
+    );
+    assert.equal((await getProvider('codex').probe(ctx))?.session?.pct, 74);
+
+    // An empty sessions dir has nothing to read.
     fs.rmSync(path.join(codexHome, 'sessions'), { recursive: true });
     fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
     assert.equal(await getProvider('codex').probe(ctx), null);
