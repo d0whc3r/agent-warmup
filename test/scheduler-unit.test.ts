@@ -55,9 +55,13 @@ const schedule = await import('../src/schedule.js');
 const launchd = await import('../src/launchd.js');
 const cron = await import('../src/cron.js');
 const { writeCache } = await import('../src/cache.js');
-const { loadConfig } = await import('../src/config.js');
+const { loadConfig, SCHEDULERS } = await import('../src/config.js');
 const { printStatus } = await import('../src/print-status.js');
 const { CRON_LOG, LABEL, LOG_DIR, PLIST_PATH, WARMUP_LOG } = await import('../src/paths.js');
+
+// launchd.apply creates ~/Library/LaunchAgents on a real install; no test reaches it
+// on Linux, so create it up front for the direct plist writes below.
+fs.mkdirSync(path.dirname(PLIST_PATH), { recursive: true });
 
 const FOREIGN = '0 0 * * * /usr/bin/backup\n# my own note\n';
 
@@ -83,9 +87,11 @@ const CRON_KIMI = [
   'WARMUP_CLAUDE_ENABLED=false',
   'WARMUP_KIMI_SCHEDULE=8,13,18',
 ];
-const LAUNCHD_KIMI = [
+// Smart-mode config; the scheduler is the platform default (launchd on macOS,
+// cron elsewhere — normalize funnels a literal launchd value back to cron on Linux).
+const SMART_KIMI = [
   'WARMUP_MODE=smart',
-  'WARMUP_SCHEDULER=launchd',
+  `WARMUP_SCHEDULER=${SCHEDULERS[0]}`,
   'WARMUP_TICK_MINUTES=30',
   'WARMUP_PROVIDERS=kimi',
   'WARMUP_SELECTED_PROVIDER=kimi',
@@ -111,9 +117,13 @@ test('applySchedule (cron) writes our marked block and never the launchd plist',
 });
 
 test('applySchedule (launchd) writes the plist with the tick calendar and clears cron', () => {
-  writeConfig(LAUNCHD_KIMI);
-  fs.writeFileSync(CRONTAB_FILE, FOREIGN + cron.buildBlock(loadConfig()) + '\n');
-  assert.equal(schedule.applySchedule(loadConfig()), true);
+  writeConfig(SMART_KIMI);
+  // On Linux the loaded config says cron, so pin launchd back in — applySchedule
+  // dispatches on the object it is handed, and the launchd path is what's under test.
+  const multi = loadConfig();
+  multi.shared.scheduler = 'launchd';
+  fs.writeFileSync(CRONTAB_FILE, FOREIGN + cron.buildBlock(multi) + '\n');
+  assert.equal(schedule.applySchedule(multi), true);
   const plist = fs.readFileSync(PLIST_PATH, 'utf8');
   assert.ok(plist.includes(`<string>${LABEL}</string>`));
   assert.match(plist, /<string>tick<\/string>/);
@@ -129,7 +139,7 @@ test('applySchedule (launchd) writes the plist with the tick calendar and clears
   // A failing bootstrap is reported, not swallowed.
   process.env.FAKE_LAUNCHCTL_STATUS = '3';
   try {
-    assert.equal(schedule.applySchedule(loadConfig()), false);
+    assert.equal(schedule.applySchedule(multi), false);
   } finally {
     delete process.env.FAKE_LAUNCHCTL_STATUS;
   }
@@ -241,12 +251,12 @@ test('printStatus renders the headless status block for both modes', () => {
   assert.match(out, /cron\s+installed=true/);
   assert.match(out, /last run\s+2026-09-05 10:00:00\] OK: kimi armed/);
 
-  // Smart + launchd, nothing installed.
-  writeConfig(LAUNCHD_KIMI);
+  // Smart + the platform scheduler, nothing installed.
+  writeConfig(SMART_KIMI);
   fs.rmSync(CRONTAB_FILE, { force: true });
   const smart = captureLog(printStatus);
   assert.match(smart, /agent-warmup\s+inactive/);
   assert.match(smart, /window\s+08–18h · check every 30m · stop at 85% weekly/);
-  assert.match(smart, /launchd\s+installed=false/);
+  assert.match(smart, new RegExp(`${SCHEDULERS[0]}\\s+installed=false`));
   assert.ok(!smart.includes('next run'), 'an inactive scheduler has no next run');
 });
