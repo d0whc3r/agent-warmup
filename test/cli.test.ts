@@ -135,3 +135,27 @@ test('a legacy ~/.claude/warmup home is moved to ~/.agent-warmup on startup', ()
   assert.ok(!fs.existsSync(legacy));
   assert.ok(result.stdout.includes(moved), 'help should list the new config path');
 });
+
+// A fresh install has no WARMUP_HOME at all: the first CLI run must leave an
+// editable warmup.env behind, or the path printed by `help` points at nothing.
+test('the first run seeds an editable warmup.env under a fresh home', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-seed-'));
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home };
+  delete env.WARMUP_HOME;
+  const cfg = path.join(home, '.agent-warmup', 'warmup.env');
+
+  const first = spawnSync(process.execPath, [...CLI_ARGV, 'help'], { encoding: 'utf8', env });
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(
+    first.stderr,
+    new RegExp(`created ${cfg.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`),
+  );
+  assert.match(fs.readFileSync(cfg, 'utf8'), /WARMUP_PROVIDERS=claude/);
+
+  // Second run keeps the user's edits.
+  fs.appendFileSync(cfg, '\nWARMUP_CLAUDE_MODEL=opus\n');
+  const second = spawnSync(process.execPath, [...CLI_ARGV, 'help'], { encoding: 'utf8', env });
+  assert.equal(second.status, 0, second.stderr);
+  assert.doesNotMatch(second.stderr, /created/);
+  assert.match(fs.readFileSync(cfg, 'utf8'), /WARMUP_CLAUDE_MODEL=opus/);
+});

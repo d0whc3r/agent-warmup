@@ -20,7 +20,7 @@ test('help lists the commands and where the files live', () => {
   const result = s.run('help');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /agent-warmup — align coding-agent quota windows/);
-  for (const cmd of ['status', 'usage', 'tick', 'run', 'detect', 'provider', 'logs']) {
+  for (const cmd of ['status', 'usage', 'tick', 'run', 'detect', 'provider', 'logs', 'upgrade']) {
     assert.ok(result.stdout.includes(`agent-warmup ${cmd}`), `help omits ${cmd}`);
   }
   assert.ok(result.stdout.includes(path.join(s.warmupHome, 'warmup.env')));
@@ -200,8 +200,8 @@ test('enable and disable drive the launchd agent through launchctl', () => {
   assert.match(s.run('enable').stdout, /✓ enabled/);
   assert.match(s.run('disable').stdout, /✓ disabled/);
   // Success is only believable if the right gui domain + label was addressed.
-  const { username, uid } = os.userInfo();
-  const target = `gui/${uid}/com.${username}.claude-warmup`;
+  const { uid } = os.userInfo();
+  const target = `gui/${uid}/com.d0whc3r.claude-warmup`;
   assert.ok(s.launchctlLog().includes(`enable ${target}`), 'enable missed the launchd label');
   assert.ok(s.launchctlLog().includes(`disable ${target}`), 'disable missed the launchd label');
 });
@@ -272,4 +272,43 @@ test('the no-TTY fallback prints the status instead of opening the TUI', () => {
     /\(no TTY — showing status; run in a terminal for the interactive UI\)/,
   );
   assert.match(result.stdout, /agent-warmup {2}inactive/);
+});
+
+test('uninstall removes the schedulers and runtime state but keeps config and logs', () => {
+  // TMUX_BIN is read as an absolute path (not via PATH), so the stub has to exist
+  // before the sandbox is built.
+  const tmuxDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-tmux-'));
+  const tmux = path.join(tmuxDir, 'tmux');
+  const tmuxLog = path.join(tmuxDir, 'calls.log');
+  fs.writeFileSync(tmux, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${tmuxLog}"\n`);
+  fs.chmodSync(tmux, 0o755);
+
+  const s = sandbox({
+    crontabText: '# MY OWN JOB\n0 9 * * * echo hi\n',
+    env: { TMUX_BIN: tmux },
+  });
+  assert.equal(s.run('start').status, 0);
+  const armScript = path.join(s.warmupHome, 'arm-codex.sh');
+  fs.writeFileSync(armScript, '#!/usr/bin/env bash\n');
+  fs.mkdirSync(path.join(s.warmupHome, 'workdir'), { recursive: true });
+  fs.writeFileSync(path.join(s.warmupHome, 'usage-cache.json'), '{}');
+
+  const result = s.run('uninstall');
+  assert.equal(result.status, 0, result.stderr);
+
+  // Automation is gone: our crontab block removed (the user's own line survives),
+  // the launchd agent booted out, the warmup tmux sessions killed.
+  assert.doesNotMatch(s.crontab(), /agent-warmup/);
+  assert.match(s.crontab(), /MY OWN JOB/);
+  assert.ok(s.launchctlLog().some((l) => l.startsWith('bootout')));
+  const tmuxCalls = fs.readFileSync(tmuxLog, 'utf8');
+  assert.match(tmuxCalls, /kill-session -t codex-warmup/);
+  assert.match(tmuxCalls, /kill-session -t codex-warmup-usage/);
+
+  // Runtime state is gone; config and logs stay.
+  assert.equal(fs.existsSync(armScript), false);
+  assert.equal(fs.existsSync(path.join(s.warmupHome, 'workdir')), false);
+  assert.equal(fs.existsSync(path.join(s.warmupHome, 'usage-cache.json')), false);
+  assert.ok(fs.existsSync(path.join(s.warmupHome, 'warmup.env')));
+  assert.match(result.stdout, /kept {2}config/);
 });

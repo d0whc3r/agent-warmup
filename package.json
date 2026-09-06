@@ -29,8 +29,7 @@
     "url": "git+https://github.com/d0whc3r/agent-warmup.git"
   },
   "bin": {
-    "agent-warmup": "dist/agent-warmup.mjs",
-    "claude-warmup": "dist/agent-warmup.mjs"
+    "agent-warmup": "dist/agent-warmup.mjs"
   },
   "files": [
     "dist",
@@ -52,8 +51,8 @@
     "prepare": "tsdown && (husky || true)",
     "typecheck": "tsc --noEmit",
     "test": "tsdown && node --import tsx --test \"test/*.test.ts\"",
-    "test:coverage": "tsdown && node --import tsx --test --experimental-test-coverage --test-coverage-exclude=\"dist/**\" --test-coverage-exclude=\"node_modules/**\" --test-coverage-lines=97 --test-coverage-functions=94 --test-coverage-branches=85 \"test/*.test.ts\"",
-    "coverage:lcov": "tsdown && mkdir -p coverage && node --import tsx --test --experimental-test-coverage --test-coverage-exclude=\"dist/**\" --test-coverage-exclude=\"node_modules/**\" --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=spec --test-reporter-destination=stdout \"test/*.test.ts\"",
+    "test:coverage": "tsdown && node --import tsx --test --experimental-test-coverage --test-coverage-exclude=\"dist/**\" --test-coverage-exclude=\"node_modules/**\" --test-coverage-exclude=\"test/**\" --test-coverage-lines=97 --test-coverage-functions=94 --test-coverage-branches=85 \"test/*.test.ts\"",
+    "coverage:lcov": "tsdown && mkdir -p coverage && node --import tsx --test --experimental-test-coverage --test-coverage-exclude=\"dist/**\" --test-coverage-exclude=\"node_modules/**\" --test-coverage-exclude=\"test/**\" --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=spec --test-reporter-destination=stdout \"test/*.test.ts\"",
     "lint": "oxlint --no-error-on-unmatched-pattern",
     "lint:fix": "oxlint --no-error-on-unmatched-pattern --fix --fix-suggestions",
     "format": "oxfmt --no-error-on-unmatched-pattern",
@@ -69,6 +68,7 @@
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
     "@commitlint/config-conventional": "21.2.2",
+    "@semantic-release/exec": "7.1.0",
     "@semantic-release/git": "11.0.1",
     "@types/node": "26.4.1",
     "@types/react": "19.2.18",

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Install agent-warmup from a GitHub Release into ~/.local/bin (or INSTALL_DIR).
 #
-#   curl -fsSL https://github.com/d0whc3r/agent-warmup/releases/latest/download/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/d0whc3r/agent-warmup/main/install.sh | bash
 #
 # Env:
 #   INSTALL_DIR  destination directory          (default: ~/.local/bin)
+#   WARMUP_HOME  config/log directory           (default: ~/.agent-warmup)
 #   VERSION      release tag, e.g. v1.2.3       (default: latest)
 #   REPO         GitHub owner/repo              (default: d0whc3r/agent-warmup)
 set -euo pipefail
 
 REPO="${REPO:-d0whc3r/agent-warmup}"
 BIN_NAME="agent-warmup"
-ALIAS_NAME="claude-warmup"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -106,8 +106,31 @@ verify_binary() {
   exit 1
 }
 
+config_path() {
+  echo "${WARMUP_HOME:-${HOME}/.agent-warmup}/warmup.env"
+}
+
+# The binary writes a fully commented warmup.env from its built-in defaults on any
+# run, so a fresh install lands with a template to edit. An existing config is kept.
+# `existed` is sampled before the binary is ever run, since verify_binary already
+# triggers the seed.
+seed_config() {
+  local dest="$1" existed="$2" cfg
+  cfg="$(config_path)"
+  if [ "$existed" = 1 ]; then
+    echo "  config    ${cfg} (kept)"
+    return 0
+  fi
+  "$dest" help >/dev/null 2>&1 || true
+  if [ -f "$cfg" ]; then
+    echo "  config    ${cfg}"
+  else
+    echo "  config    ${cfg} (created on first run)"
+  fi
+}
+
 install_binary() {
-  local target url dir dest tmp
+  local target url dir dest tmp cfg_existed=0
   : "${HOME:?HOME is not set}"
   need_cmd curl
   need_cmd mktemp
@@ -143,12 +166,14 @@ install_binary() {
   rm -f "$dest"
   mv "$tmp" "$dest"
   trap - EXIT
-  ln -sfn "$dest" "${dir}/${ALIAS_NAME}"
 
+  if [ -f "$(config_path)" ]; then
+    cfg_existed=1
+  fi
   verify_binary "$dest"
 
   echo "✓ installed ${dest}"
-  echo "  alias     ${dir}/${ALIAS_NAME}"
+  seed_config "$dest" "$cfg_existed"
   if path_has_dir "$dir"; then
     echo "  next      ${BIN_NAME} status"
   else
@@ -173,12 +198,16 @@ main() {
       : "${HOME:?HOME is not set}"
       install_dir
       ;;
+    --print-config)
+      : "${HOME:?HOME is not set}"
+      config_path
+      ;;
     -h | --help)
       echo "Install ${BIN_NAME} from https://github.com/${REPO}/releases"
       echo
-      echo "Usage: curl -fsSL https://github.com/${REPO}/releases/latest/download/install.sh | bash"
+      echo "Usage: curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash"
       echo
-      echo "Env: INSTALL_DIR  VERSION  REPO"
+      echo "Env: INSTALL_DIR  VERSION  REPO  WARMUP_HOME"
       ;;
     "")
       install_binary

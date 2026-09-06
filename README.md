@@ -22,6 +22,9 @@ Installs `~/.local/bin/agent-warmup` for macOS/Linux, x64 or arm64. The script
 lives on `main` and always resolves the latest release. Override the destination
 with `INSTALL_DIR`, or pin a version with `VERSION=v1.2.3`.
 
+Later, `agent-warmup upgrade` replaces the binary in place with the newest
+GitHub release (`agent-warmup version` prints the one you have).
+
 macOS binaries are ad-hoc signed; if the first launch is blocked, allow it in
 System Settings → Privacy & Security → Open Anyway.
 
@@ -86,6 +89,8 @@ agent-warmup provider ID model NAME
 agent-warmup provider ID binary PATH
 agent-warmup provider ID schedule H ...
 agent-warmup tick [--dry-run] [--provider ID]
+agent-warmup uninstall               Remove the plist/cron entry, tmux sessions
+                                     and cache (config and logs are kept)
 ```
 
 ## Docs

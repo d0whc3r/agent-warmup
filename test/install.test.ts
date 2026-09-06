@@ -45,7 +45,7 @@ esac
 `;
 }
 
-function curlStub(logFile: string): string {
+function curlStub(logFile: string, binaryBody = '#!/bin/sh\nexit 0'): string {
   return `#!/bin/sh
 out=""
 url=""
@@ -62,7 +62,9 @@ if [ -z "$out" ]; then
   echo "missing -o" >&2
   exit 1
 fi
-printf '%s\\n' '#!/bin/sh' 'exit 0' > "$out"
+cat > "$out" <<'AGENT_WARMUP_BIN'
+${binaryBody}
+AGENT_WARMUP_BIN
 chmod +x "$out"
 `;
 }
@@ -164,7 +166,7 @@ test('--print-dir defaults to ~/.local/bin and honors INSTALL_DIR', () => {
   assert.equal(custom.stdout.trim(), '/opt/bin');
 });
 
-test('installs the binary and claude-warmup alias into INSTALL_DIR', () => {
+test('installs the binary into INSTALL_DIR', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-install-'));
   const destDir = path.join(tmp, 'bin');
   const logFile = path.join(tmp, 'curl.log');
@@ -184,11 +186,8 @@ test('installs the binary and claude-warmup alias into INSTALL_DIR', () => {
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 
   const binary = path.join(destDir, 'agent-warmup');
-  const alias = path.join(destDir, 'claude-warmup');
   assert.equal(fs.existsSync(binary), true);
   assert.equal(Boolean(fs.statSync(binary).mode & 0o111), true);
-  assert.equal(fs.lstatSync(alias).isSymbolicLink(), true);
-  assert.equal(fs.readlinkSync(alias), binary);
 
   const urls = fs.readFileSync(logFile, 'utf8').trim().split('\n');
   assert.equal(
@@ -196,4 +195,49 @@ test('installs the binary and claude-warmup alias into INSTALL_DIR', () => {
     'https://github.com/d0whc3r/agent-warmup/releases/latest/download/agent-warmup-linux-x64',
   );
   assert.match(result.stdout, /PATH does not include/);
+});
+
+// The installed binary seeds ~/.agent-warmup/warmup.env on its first run; the
+// installer only has to trigger it and say where the file landed.
+const SEEDING_BIN = [
+  '#!/bin/sh',
+  'cfg="${WARMUP_HOME:-$HOME/.agent-warmup}/warmup.env"',
+  'mkdir -p "$(dirname "$cfg")"',
+  '[ -f "$cfg" ] || echo "WARMUP_PROVIDERS=claude" > "$cfg"',
+  'exit 0',
+].join('\n');
+
+test('--print-config resolves the config file, honoring WARMUP_HOME', () => {
+  const fallback = runInstall(['--print-config'], { HOME: '/tmp/warmup-home' });
+  assert.equal(fallback.status, 0, fallback.stderr);
+  assert.equal(fallback.stdout.trim(), '/tmp/warmup-home/.agent-warmup/warmup.env');
+
+  const custom = runInstall(['--print-config'], {
+    HOME: '/tmp/warmup-home',
+    WARMUP_HOME: '/opt/warmup',
+  });
+  assert.equal(custom.status, 0, custom.stderr);
+  assert.equal(custom.stdout.trim(), '/opt/warmup/warmup.env');
+});
+
+test('the install seeds warmup.env and keeps an existing one', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-seed-'));
+  const destDir = path.join(tmp, 'bin');
+  const cfg = path.join(tmp, '.agent-warmup', 'warmup.env');
+  const stubs = {
+    uname: unameStub('Linux', 'x86_64'),
+    curl: curlStub(path.join(tmp, 'curl.log'), SEEDING_BIN),
+  };
+
+  const fresh = runInstall([], { HOME: tmp, INSTALL_DIR: destDir }, { stubs });
+  assert.equal(fresh.status, 0, `${fresh.stdout}\n${fresh.stderr}`);
+  assert.match(fresh.stdout, new RegExp(`config\\s+${cfg}$`, 'm'));
+  assert.equal(fs.readFileSync(cfg, 'utf8').trim(), 'WARMUP_PROVIDERS=claude');
+
+  // Re-running the installer must not clobber a config the user has edited.
+  fs.writeFileSync(cfg, 'WARMUP_PROVIDERS=kimi\n');
+  const again = runInstall([], { HOME: tmp, INSTALL_DIR: destDir }, { stubs });
+  assert.equal(again.status, 0, `${again.stdout}\n${again.stderr}`);
+  assert.match(again.stdout, /config\s+.*warmup\.env \(kept\)/);
+  assert.equal(fs.readFileSync(cfg, 'utf8'), 'WARMUP_PROVIDERS=kimi\n');
 });

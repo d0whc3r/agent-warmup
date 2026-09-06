@@ -153,6 +153,17 @@ export function saveConfig(input: ConfigInput | Partial<MultiConfig>): MultiConf
   return next;
 }
 
+// First-run seed: drop a fully commented warmup.env under WARMUP_HOME so a fresh
+// install has a file to open and edit. Written from the built-in defaults, which
+// are platform-correct (SCHEDULERS[0] is launchd on macOS, cron elsewhere), so no
+// example file has to ship with the binary. Never overwrites an existing config.
+export function ensureConfigFile(): boolean {
+  if (fs.existsSync(CONFIG_PATH)) return false;
+  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, serialize(cloneDefault()));
+  return true;
+}
+
 // Convert a MultiConfig into the legacy merged view of the SELECTED provider +
 // shared. This is the shape the existing UI/CLI expects.
 export function getView(multi: MultiConfig): Config {

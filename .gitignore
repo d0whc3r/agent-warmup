@@ -8,6 +8,13 @@ coverage/
 # build artifacts (SEA bundle + blob + executable)
 dist/
 *.blob
+# release cross-build (scripts/build-sea-release.sh)
+out/
+target-node/
+node.tar.gz
+sea.target.json
 .env
 .env.*
 !.env.example
+
+target-node/

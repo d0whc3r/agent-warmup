@@ -15,7 +15,6 @@ const SRC_DIR = IN_SEA
   : path.dirname(fileURLToPath(import.meta.url));
 
 export const HOME = os.homedir();
-const USER = os.userInfo().username;
 const UID = os.userInfo().uid;
 
 // Repo root (package dir), so paths work wherever the project lives.
@@ -103,7 +102,7 @@ export const ARM_SCRIPT = (id: ProviderId): string => {
 };
 
 // launchd
-export const LABEL = `com.${USER}.claude-warmup`;
+export const LABEL = 'com.d0whc3r.claude-warmup';
 export const PLIST_PATH = path.join(HOME, 'Library', 'LaunchAgents', `${LABEL}.plist`);
 export const GUI_DOMAIN = `gui/${UID}`;
 

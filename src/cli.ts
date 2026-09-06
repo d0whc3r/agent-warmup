@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 // agent-warmup CLI. With no subcommand it opens the Ink TUI; otherwise it runs
 // a headless action so it stays scriptable.
-import { loadConfig, saveConfig, MODELS, SCHEDULERS, MODES, getView } from './config.js';
+import {
+  loadConfig,
+  saveConfig,
+  ensureConfigFile,
+  MODELS,
+  SCHEDULERS,
+  MODES,
+  getView,
+} from './config.js';
 import { detectAll, detectProvider } from './detect.js';
 import * as launchd from './launchd.js';
 import {
   LABEL,
   LEGACY_HOME,
   PLIST_PATH,
+  LOG_DIR,
   WARMUP_HOME,
   WARMUP_LOG,
   CONFIG_PATH,
@@ -22,6 +31,9 @@ import * as schedule from './schedule.js';
 import { getStatus } from './status.js';
 import { runTick, readCache, writeCache } from './tick.js';
 import type { Config, ProviderConfig, ProviderId, ProviderInput, UiAction } from './types.js';
+import { purge } from './uninstall.js';
+import { upgrade } from './upgrade.js';
+import { VERSION } from './version.js';
 
 const argv = process.argv.slice(2);
 const cmd: string | undefined = argv[0];
@@ -30,6 +42,10 @@ const rest = argv.slice(1);
 // Pre-rename installs lived under ~/.claude/warmup; move them into the neutral home
 // before anything reads config, cache or logs.
 if (migrateLegacyHome()) console.error(`✓ moved ${LEGACY_HOME} → ${WARMUP_HOME}`);
+
+// Fresh install: seed the editable warmup.env from the defaults so `config` in the
+// help footer points at a file that actually exists.
+if (ensureConfigFile()) console.error(`✓ created ${CONFIG_PATH}`);
 
 function reapplyIfActive(): boolean {
   if (getStatus().active) {
@@ -102,9 +118,11 @@ Usage:
   agent-warmup provider ID binary PATH
   agent-warmup provider ID schedule H ...
   agent-warmup logs [-f]          Show recent warmup logs (-f to follow)
+  agent-warmup uninstall          Remove the plist/cron entry, tmux sessions and
+                                  cache (config and logs are kept)
+  agent-warmup upgrade            Replace this binary with the latest release
+  agent-warmup version            Print the installed version
   agent-warmup help               Show this help
-
-The legacy command name \`claude-warmup\` remains an alias.
 
 Files:
   config   ${CONFIG_PATH}
@@ -298,6 +316,20 @@ switch (cmd) {
   }
   case 'logs':
     viewLogs(rest.includes('-f') || rest.includes('--follow'));
+    break;
+  case 'uninstall': {
+    for (const item of purge()) console.log(`✓ removed ${item}`);
+    console.log(`\nkept  config  ${CONFIG_PATH}`);
+    console.log(`      logs    ${LOG_DIR}`);
+    console.log('      binary  delete it yourself if you no longer want the CLI');
+    break;
+  }
+  case 'upgrade':
+    process.exit(await upgrade());
+  case 'version':
+  case '-v':
+  case '--version':
+    console.log(VERSION);
     break;
   case 'help':
   case '-h':

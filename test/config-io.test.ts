@@ -7,7 +7,14 @@ import { test } from 'node:test';
 // loadConfig/saveConfig pin CONFIG_PATH under WARMUP_HOME at import time.
 const HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-config-io-'));
 process.env.WARMUP_HOME = HOME_DIR;
-const { loadConfig, saveConfig, parseMultiConfig } = await import('../src/config.js');
+const {
+  loadConfig,
+  saveConfig,
+  parseMultiConfig,
+  serializeMultiConfig,
+  ensureConfigFile,
+  DEFAULT_MULTI,
+} = await import('../src/config.js');
 const { CONFIG_PATH } = await import('../src/paths.js');
 
 test('a missing config file reads as the defaults', () => {
@@ -54,4 +61,36 @@ test('normalization clamps hostile values instead of trusting them', () => {
   assert.equal(multi.providers.codex?.weeklyStopPercent, 100);
   assert.equal(multi.providers.kimi?.tmuxSession, 'my-session-x');
   assert.equal(multi.providers.kimi?.weeklyStopPercent, 1);
+});
+
+// Keys present in a line, ignoring comments and blanks.
+function envKeys(text: string): Set<string> {
+  return new Set(
+    text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => l.split('=')[0] as string),
+  );
+}
+
+test('ensureConfigFile seeds a full template once and never overwrites it', () => {
+  fs.rmSync(CONFIG_PATH, { force: true });
+
+  assert.equal(ensureConfigFile(), true);
+  const seeded = fs.readFileSync(CONFIG_PATH, 'utf8');
+  // Every provider gets a stanza, so the file can be hand-edited without docs.
+  assert.deepEqual(envKeys(seeded), envKeys(serializeMultiConfig(DEFAULT_MULTI)));
+  // Defaults only enable claude; the rest stay opt-in.
+  assert.match(seeded, /WARMUP_CLAUDE_ENABLED=true/);
+  assert.match(seeded, /WARMUP_CODEX_ENABLED=false/);
+
+  fs.writeFileSync(CONFIG_PATH, 'WARMUP_PROVIDERS=kimi\n');
+  assert.equal(ensureConfigFile(), false);
+  assert.equal(fs.readFileSync(CONFIG_PATH, 'utf8'), 'WARMUP_PROVIDERS=kimi\n');
+});
+
+test('.env.example documents exactly the keys the seeded config writes', () => {
+  const example = fs.readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
+  assert.deepEqual(envKeys(example), envKeys(serializeMultiConfig(DEFAULT_MULTI)));
 });

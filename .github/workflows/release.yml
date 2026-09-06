@@ -1,22 +1,22 @@
 name: Release
 
 # Fully automated release driven by conventional commits. Every push to main runs
-# the CI checks, cross-builds the four single-executable (SEA) binaries, then hands
-# them to semantic-release, which decides from the commit history whether a release
-# is due, computes the version, tags it and publishes the GitHub Release with the
-# binaries attached. No release is ever published without its assets. Manual dispatch
-# is a build-only smoke test and publishes nothing.
+# the CI checks and then semantic-release, which decides from the commit history
+# whether a release is due, computes the version, bumps package.json, cross-builds
+# the four single-executable (SEA) binaries from that bumped tree (prepare step, see
+# scripts/build-sea-release.sh), tags it and publishes the GitHub Release with the
+# binaries attached. Building inside `prepare` is what lets a binary report its own
+# version (`agent-warmup version`, used by `agent-warmup upgrade`). No release is
+# ever published without its assets. Manual dispatch only builds and publishes nothing.
 #
 # Build and release share one job on purpose: passing the binaries between jobs would
 # need actions/upload-artifact, and four ~100 MB SEA binaries per run eat the account's
 # Actions storage quota. Same job, same workspace, no artifacts. The cost is that the
 # four targets build sequentially instead of in parallel (~2-3 min extra wall clock).
 #
-# How cross-compile works: `node --build-sea` (Node 26) injects the app blob into a
-# *target* Node runtime via LIEF, so the host arch/OS does not matter. Each target
-# downloads that target's official Node build and points sea-config.json's `executable`
-# at it. sea-config.json keeps useCodeCache/useSnapshot off (both are platform-specific
-# and would crash a cross-built binary).
+# How cross-compile works: see scripts/build-sea-release.sh. sea-config.json keeps
+# useCodeCache/useSnapshot off (both are platform-specific and would crash a
+# cross-built binary).
 #
 # Signing: Linux needs none. macOS Mach-O is invalidated by the blob injection and
 # arm64 macOS refuses to run unsigned, so we ad-hoc sign it with rcodesign (the Linux
@@ -74,10 +74,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Bundle the CLI to one platform-agnostic ESM file (dist/agent-warmup.mjs).
-      - name: Bundle CLI
-        run: pnpm run build
-
       # Fetched once and reused by both macOS targets.
       - name: Fetch rcodesign
         run: |
@@ -91,39 +87,12 @@ jobs:
           fi
           echo "RCODESIGN=$PWD/${FOUND#./}" >> "$GITHUB_ENV"
 
-      # Each target: fetch its official Node runtime, inject the blob, sign if macOS.
-      # Output lands in out/, where .releaserc.json expects the release assets.
-      - name: Build SEA binaries
-        run: |
-          set -euo pipefail
-          NODE_VERSION="$(node -v)" # e.g. v26.2.0
-          mkdir -p out
-          for TARGET in $TARGETS; do
-            OS="${TARGET%-*}"
-            ARCH="${TARGET#*-}"
-            echo "::group::$TARGET"
-
-            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-${OS}-${ARCH}.tar.gz" -o node.tar.gz
-            rm -rf target-node && mkdir -p target-node
-            tar xf node.tar.gz -C target-node --strip-components=1
-
-            OUT="out/agent-warmup-${TARGET}"
-            jq --arg exe "$PWD/target-node/bin/node" --arg out "$OUT" \
-              '.executable = $exe | .output = $out' sea-config.json > sea.target.json
-            node --build-sea sea.target.json
-            chmod +x "$OUT"
-
-            # arm64 macOS won't run without a valid signature; ad-hoc is enough to execute.
-            if [ "$OS" = darwin ]; then
-              "$RCODESIGN" sign "$OUT"
-            fi
-            echo "::endgroup::"
-          done
-
-      # Only the linux-x64 binary can execute on the x64 ubuntu runner; the rest are
-      # foreign binaries we can only build, not run, here.
-      - name: Smoke test (linux-x64)
-        run: ./out/agent-warmup-linux-x64 help
+      # On a push, semantic-release runs this same script in its `prepare` step —
+      # after the version bump, so the binaries carry the version being released.
+      # Manual dispatch has no version to bump, so it builds here as a smoke test.
+      - name: Build SEA binaries (smoke test)
+        if: github.event_name == 'workflow_dispatch'
+        run: bash scripts/build-sea-release.sh
 
       # Manual dispatch stops at the build smoke test; only main pushes can publish.
       - name: Release
