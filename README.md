@@ -15,13 +15,12 @@ see [supported providers](docs/providers.md).
 ## Install
 
 ```bash
-curl -fsSL https://github.com/d0whc3r/agent-warmup/releases/latest/download/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/d0whc3r/agent-warmup/main/install.sh | bash
 ```
 
-Installs `~/.local/bin/agent-warmup` for macOS/Linux, x64 or arm64. Override the
-destination with `INSTALL_DIR`, or pin a version with `VERSION=v1.2.3`. If that
-URL 404s because no release has attached `install.sh` yet, use the copy on
-`main`: `https://raw.githubusercontent.com/d0whc3r/agent-warmup/main/install.sh`.
+Installs `~/.local/bin/agent-warmup` for macOS/Linux, x64 or arm64. The script
+lives on `main` and always resolves the latest release. Override the destination
+with `INSTALL_DIR`, or pin a version with `VERSION=v1.2.3`.
 
 macOS binaries are ad-hoc signed; if the first launch is blocked, allow it in
 System Settings → Privacy & Security → Open Anyway.

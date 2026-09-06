@@ -25,14 +25,20 @@ pnpm coverage:lcov   # suite + coverage/lcov.info for tooling
 
 ## Releasing
 
-Push a version tag. GitHub Actions builds the four SEA binaries, attaches them
-to the GitHub Release for that tag, and uploads `install.sh` so the curl
-installer can fetch that release:
+Releases are automatic. Every push to `main` runs CI, builds the four SEA
+binaries, then hands them to [semantic-release], which reads the commit history
+and publishes a GitHub Release only when the commits warrant one:
 
-```bash
-git tag v1.2.3
-git push origin v1.2.3
-```
+| Commit type                      | Version bump |
+| -------------------------------- | ------------ |
+| `fix:`                           | patch        |
+| `feat:`                          | minor        |
+| any type + `BREAKING CHANGE:`    | major        |
+| `chore:`, `docs:`, `refactor:` … | none         |
+
+Commit messages are enforced at commit time by commitlint via a husky
+`commit-msg` hook ([Conventional Commits]). Nothing is tagged or published by
+hand.
 
 | Platform            | Asset                       |
 | ------------------- | --------------------------- |
@@ -41,6 +47,10 @@ git push origin v1.2.3
 | macOS Intel         | `agent-warmup-darwin-x64`   |
 | macOS Apple Silicon | `agent-warmup-darwin-arm64` |
 
-Tags with a hyphen (`v1.2.3-rc.1`) are published as GitHub prereleases.
+`install.sh` is not a release asset — it is served from `main` and resolves
+`releases/latest/download/` itself.
 `workflow_dispatch` on `.github/workflows/release.yml` smoke-tests the same
 matrix without publishing.
+
+[semantic-release]: https://semantic-release.gitbook.io
+[Conventional Commits]: https://www.conventionalcommits.org

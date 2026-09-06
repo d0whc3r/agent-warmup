@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/semantic-release.json",
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/npm", { "npmPublish": false }],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          { "path": "out/agent-warmup-linux-x64", "label": "agent-warmup-linux-x64" },
+          { "path": "out/agent-warmup-linux-arm64", "label": "agent-warmup-linux-arm64" },
+          { "path": "out/agent-warmup-darwin-x64", "label": "agent-warmup-darwin-x64" },
+          { "path": "out/agent-warmup-darwin-arm64", "label": "agent-warmup-darwin-arm64" }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["package.json"],
+        "message": "chore(release): ${nextRelease.version} [skip ci]"
+      }
+    ]
+  ]
+}

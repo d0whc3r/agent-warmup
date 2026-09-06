@@ -1,9 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  # Called by release.yml on push to main, so main is gated by the same checks
+  # without running this workflow twice per push.
+  workflow_call:
 
 # Cancel superseded runs on the same ref.
 concurrency:

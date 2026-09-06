@@ -1,9 +1,11 @@
 name: Release
 
-# Build the single-executable (SEA) for every target from a single ubuntu-latest
-# runner — no macOS/arm runners. A version tag (v*) creates the GitHub Release
-# and each matrix job uploads its binary straight to that release. Manual
-# dispatch is a build-only smoke test and publishes nothing.
+# Fully automated release driven by conventional commits. Every push to main runs
+# the CI checks, cross-builds the four single-executable (SEA) binaries, then hands
+# them to semantic-release, which decides from the commit history whether a release
+# is due, computes the version, tags it and publishes the GitHub Release with the
+# binaries attached. No release is ever published without its assets. Manual dispatch
+# is a build-only smoke test and publishes nothing.
 #
 # How cross-compile works: `node --build-sea` (Node 26) injects the app blob into a
 # *target* Node runtime via LIEF, so the host arch/OS does not matter. Each matrix row
@@ -22,12 +24,12 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -38,49 +40,14 @@ env:
   APPLE_CODESIGN_VERSION: '0.29.0' # bump as new apple-platform-rs releases land
 
 jobs:
-  prepare:
-    name: Create GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # generate-notes walks commits since the previous tag
-
-      - name: Create release from tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }} # via env, never interpolated into the shell
-        run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists"
-            exit 0
-          fi
-          extra=()
-          case "$TAG" in
-            *-*) extra+=(--prerelease) ;;
-          esac
-          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag "${extra[@]}"
-
-      - name: Attach curl installer
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: gh release upload "$TAG" install.sh --clobber
+  check:
+    name: CI
+    uses: ./.github/workflows/ci.yml
 
   build:
     name: Build (${{ matrix.target }})
-    needs: prepare
-    # prepare is skipped on workflow_dispatch; still build so the matrix can be smoke-tested.
-    if: ${{ !cancelled() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
+    needs: check
     runs-on: ubuntu-latest
-    # NOTE: permissions values cannot use ${{ }} expressions (GitHub rejects the
-    # whole workflow at parse time), so this job always requests contents:write.
-    # It only writes when uploading to a release on tag builds.
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -146,12 +113,51 @@ jobs:
         if: matrix.target == 'linux-x64'
         run: ./out/agent-warmup-linux-x64 help
 
-      - name: Upload binary to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: sea-${{ matrix.target }}
+          path: out/agent-warmup-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: semantic-release
+    needs: build
+    # Manual dispatch stops at the build smoke test; only main pushes can publish.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag, the release and the version bump commit
+      issues: write # comment on issues closed by the release
+      pull-requests: write # comment on the PRs it shipped
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # commit-analyzer walks history back to the previous tag
+          persist-credentials: true # @semantic-release/git pushes the version bump
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Flatten the per-target artifacts back into out/, where .releaserc.json
+      # expects the release assets to be.
+      - name: Download binaries
+        uses: actions/download-artifact@v6
+        with:
+          pattern: sea-*
+          path: out
+          merge-multiple: true
+
+      - run: chmod +x out/agent-warmup-*
+
+      - name: Release
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          gh release upload "$TAG" \
-            "out/agent-warmup-${{ matrix.target }}" \
-            --clobber
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec semantic-release
