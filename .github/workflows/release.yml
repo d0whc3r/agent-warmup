@@ -7,8 +7,13 @@ name: Release
 # binaries attached. No release is ever published without its assets. Manual dispatch
 # is a build-only smoke test and publishes nothing.
 #
+# Build and release share one job on purpose: passing the binaries between jobs would
+# need actions/upload-artifact, and four ~100 MB SEA binaries per run eat the account's
+# Actions storage quota. Same job, same workspace, no artifacts. The cost is that the
+# four targets build sequentially instead of in parallel (~2-3 min extra wall clock).
+#
 # How cross-compile works: `node --build-sea` (Node 26) injects the app blob into a
-# *target* Node runtime via LIEF, so the host arch/OS does not matter. Each matrix row
+# *target* Node runtime via LIEF, so the host arch/OS does not matter. Each target
 # downloads that target's official Node build and points sea-config.json's `executable`
 # at it. sea-config.json keeps useCodeCache/useSnapshot off (both are platform-specific
 # and would crash a cross-built binary).
@@ -38,26 +43,26 @@ env:
   # NOTE: must NOT be prefixed RCODESIGN_ — rcodesign treats RCODESIGN_* env vars
   # as its config file values and would reject the unknown 'version' key.
   APPLE_CODESIGN_VERSION: '0.29.0' # bump as new apple-platform-rs releases land
+  TARGETS: 'linux-x64 linux-arm64 darwin-x64 darwin-arm64'
 
 jobs:
   check:
     name: CI
     uses: ./.github/workflows/ci.yml
 
-  build:
-    name: Build (${{ matrix.target }})
+  release:
+    name: Build & semantic-release
     needs: check
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: linux-x64, os: linux, arch: x64, sign: false }
-          - { target: linux-arm64, os: linux, arch: arm64, sign: false }
-          - { target: darwin-x64, os: darwin, arch: x64, sign: true }
-          - { target: darwin-arm64, os: darwin, arch: arm64, sign: true }
+    permissions:
+      contents: write # create the tag, the release and the version bump commit
+      issues: write # comment on issues closed by the release
+      pull-requests: write # comment on the PRs it shipped
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # commit-analyzer walks history back to the previous tag
+          persist-credentials: true # @semantic-release/git pushes the version bump
 
       # Must run before setup-node so its `cache: pnpm` finds pnpm on PATH.
       - uses: pnpm/action-setup@v6
@@ -73,91 +78,56 @@ jobs:
       - name: Bundle CLI
         run: pnpm run build
 
-      # Download the target platform's Node runtime to inject the blob into. The exact
-      # version is whatever .nvmrc resolved to, so the embedded runtime matches the host.
-      - name: Fetch target Node runtime
-        run: |
-          NODE_VERSION="$(node -v)" # e.g. v26.2.0
-          PKG="node-${NODE_VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
-          curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${PKG}.tar.gz" -o node.tar.gz
-          mkdir -p target-node
-          tar xf node.tar.gz -C target-node --strip-components=1
-          echo "TARGET_NODE=$PWD/target-node/bin/node" >> "$GITHUB_ENV"
-
-      - name: Build SEA (cross-compile into target runtime)
-        run: |
-          mkdir -p out
-          OUT="out/agent-warmup-${{ matrix.target }}"
-          jq --arg exe "$TARGET_NODE" --arg out "$OUT" \
-            '.executable = $exe | .output = $out' sea-config.json > sea.target.json
-          node --build-sea sea.target.json
-          chmod +x "$OUT"
-
-      # arm64 macOS won't run without a valid signature; ad-hoc is enough to execute.
-      - name: Ad-hoc sign macOS binary
-        if: matrix.sign
+      # Fetched once and reused by both macOS targets.
+      - name: Fetch rcodesign
         run: |
           PKG="apple-codesign-${APPLE_CODESIGN_VERSION}-x86_64-unknown-linux-musl"
           curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${APPLE_CODESIGN_VERSION}/${PKG}.tar.gz" -o rcodesign.tar.gz
           tar xf rcodesign.tar.gz
-          RCODESIGN="$(find . -name rcodesign -type f | head -1)" # tolerate layout changes
-          if [ -z "$RCODESIGN" ]; then
+          FOUND="$(find . -name rcodesign -type f | head -1)" # tolerate layout changes
+          if [ -z "$FOUND" ]; then
             echo "✗ rcodesign binary not found in ${PKG}.tar.gz" >&2
             exit 1
           fi
-          "$RCODESIGN" sign "out/agent-warmup-${{ matrix.target }}"
+          echo "RCODESIGN=$PWD/${FOUND#./}" >> "$GITHUB_ENV"
+
+      # Each target: fetch its official Node runtime, inject the blob, sign if macOS.
+      # Output lands in out/, where .releaserc.json expects the release assets.
+      - name: Build SEA binaries
+        run: |
+          set -euo pipefail
+          NODE_VERSION="$(node -v)" # e.g. v26.2.0
+          mkdir -p out
+          for TARGET in $TARGETS; do
+            OS="${TARGET%-*}"
+            ARCH="${TARGET#*-}"
+            echo "::group::$TARGET"
+
+            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-${OS}-${ARCH}.tar.gz" -o node.tar.gz
+            rm -rf target-node && mkdir -p target-node
+            tar xf node.tar.gz -C target-node --strip-components=1
+
+            OUT="out/agent-warmup-${TARGET}"
+            jq --arg exe "$PWD/target-node/bin/node" --arg out "$OUT" \
+              '.executable = $exe | .output = $out' sea-config.json > sea.target.json
+            node --build-sea sea.target.json
+            chmod +x "$OUT"
+
+            # arm64 macOS won't run without a valid signature; ad-hoc is enough to execute.
+            if [ "$OS" = darwin ]; then
+              "$RCODESIGN" sign "$OUT"
+            fi
+            echo "::endgroup::"
+          done
 
       # Only the linux-x64 binary can execute on the x64 ubuntu runner; the rest are
       # foreign binaries we can only build, not run, here.
       - name: Smoke test (linux-x64)
-        if: matrix.target == 'linux-x64'
         run: ./out/agent-warmup-linux-x64 help
 
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: sea-${{ matrix.target }}
-          path: out/agent-warmup-${{ matrix.target }}
-          if-no-files-found: error
-          retention-days: 1
-
-  release:
-    name: semantic-release
-    needs: build
-    # Manual dispatch stops at the build smoke test; only main pushes can publish.
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # create the tag, the release and the version bump commit
-      issues: write # comment on issues closed by the release
-      pull-requests: write # comment on the PRs it shipped
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # commit-analyzer walks history back to the previous tag
-          persist-credentials: true # @semantic-release/git pushes the version bump
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # Flatten the per-target artifacts back into out/, where .releaserc.json
-      # expects the release assets to be.
-      - name: Download binaries
-        uses: actions/download-artifact@v6
-        with:
-          pattern: sea-*
-          path: out
-          merge-multiple: true
-
-      - run: chmod +x out/agent-warmup-*
-
+      # Manual dispatch stops at the build smoke test; only main pushes can publish.
       - name: Release
+        if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm exec semantic-release
