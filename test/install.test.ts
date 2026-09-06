@@ -72,11 +72,11 @@ test('install.sh is valid bash', () => {
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('README documents the curl installer from the latest GitHub Release', () => {
+test('README documents the curl installer served from main', () => {
   const readme = fs.readFileSync(README, 'utf8');
   assert.match(
     readme,
-    /curl -fsSL https:\/\/github.com\/d0whc3r\/agent-warmup\/releases\/latest\/download\/install\.sh \| bash/,
+    /curl -fsSL https:\/\/raw\.githubusercontent\.com\/d0whc3r\/agent-warmup\/main\/install\.sh \| bash/,
   );
 });
 
