@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Arms Kimi Code with one non-interactive turn and no project skills loaded.
 set -euo pipefail
+umask 077
 
 export PATH="$HOME/.kimi-code/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 

@@ -5,13 +5,12 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 
 import { ARM_SCRIPT, ARM_SCRIPT_SRC, expandHome } from '../paths.js';
-import { differenceInMilliseconds } from '../time.js';
+import { FIVE_HOURS_MS, differenceInMilliseconds } from '../time.js';
 import type { Decision, ProviderUsage } from '../types.js';
 import { inferWindowFromCache, recordArmWithCooldown } from './common.js';
 import type { ProbeContext, Provider } from './types.js';
 
 const GO_WEEKLY_USD = 30; // 30 USD per week
-const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 // A model block in the boxed layout is Messages / Input / Output / Cache Read /
 // Cache Write / Cost — six rows. Ten keeps a row or two of slack without ever
 // reaching the *next* model's Cost row.

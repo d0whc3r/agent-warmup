@@ -38,25 +38,43 @@ export function stripBlock(text: string): string {
   return out.join('\n').replace(/\s+$/, '');
 }
 
+const SAFE_SHELL_ARG = /^[A-Za-z0-9_./:@%+=,-]+$/;
+
+// Quote an argument for POSIX sh only when it contains spaces or shell
+// metacharacters, keeping standard paths readable and crontab-safe.
+export function shellQuote(value: string): string {
+  if (value.length > 0 && SAFE_SHELL_ARG.test(value)) {
+    return value;
+  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 export function buildBlock(multi: MultiConfig): string {
+  const cmd = `${SELF_INVOCATION.map(shellQuote).join(' ')} tick >> ${shellQuote(CRON_LOG)} 2>&1`;
   let line: string;
   if (multi.shared.mode === 'smart') {
     const { tickMinutes } = multi.shared;
     const enabled = multi.shared.providers
       .map((id) => multi.providers[id])
       .filter((p): p is NonNullable<typeof p> => !!p);
+    if (enabled.length === 0) {
+      return `${BEGIN}\n# (no enabled providers)\n${END}`;
+    }
     const workStart = Math.min(...enabled.map((p) => p.workStart));
     const workEnd = Math.max(...enabled.map((p) => p.workEnd));
     // workEnd is exclusive -> hours workStart..workEnd-1
     const hours = workEnd - workStart === 1 ? `${workStart}` : `${workStart}-${workEnd - 1}`;
     const min = tickMinutes >= 60 ? '0' : `*/${tickMinutes}`;
-    line = `${min} ${hours} * * * ${SELF_INVOCATION.join(' ')} tick >> ${CRON_LOG} 2>&1`;
+    line = `${min} ${hours} * * * ${cmd}`;
   } else {
     // Fixed mode: union of all enabled providers' schedules.
     const hours = Array.from(
       new Set(multi.shared.providers.flatMap((id) => multi.providers[id]?.schedule ?? [])),
     ).sort((a, b) => a - b);
-    line = `0 ${hours.join(',')} * * * ${SELF_INVOCATION.join(' ')} tick >> ${CRON_LOG} 2>&1`;
+    if (hours.length === 0) {
+      return `${BEGIN}\n# (no scheduled hours)\n${END}`;
+    }
+    line = `0 ${hours.join(',')} * * * ${cmd}`;
   }
   return `${BEGIN}\n${line}\n${END}`;
 }

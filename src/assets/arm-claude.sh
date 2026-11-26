@@ -7,6 +7,7 @@
 # Uses --safe-mode: keeps normal auth (Keychain/OAuth) but disables hooks, MCP,
 # CLAUDE.md and plugins -> fast startup, cheap, no integration prompts.
 set -euo pipefail
+umask 077
 
 # Robust minimal PATH (launchd/cron start with a bare PATH).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"

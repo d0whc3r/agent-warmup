@@ -187,9 +187,10 @@ git commit -m "feat(providers): add Provider interface and shared types"
 - [ ] **Step 1: Write the failing test**
 
 ```ts
+import assert from 'node:assert/strict';
 // test/registry.test.ts
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+
 import { getProvider, listProviderIds } from '../src/providers/index.js';
 
 test('registry exposes claude and opencode', () => {
@@ -221,10 +222,10 @@ Expected: FAIL — `Cannot find module '../src/providers/index.js'`.
 - [ ] **Step 3: Implement the registry (with provider stubs)**
 
 ```ts
-// src/providers/index.ts
-import type { Provider, ProviderId } from './types.js';
 import { claude } from './claude.js';
 import { opencode } from './opencode.js';
+// src/providers/index.ts
+import type { Provider, ProviderId } from './types.js';
 
 const providers: Record<ProviderId, Provider> = { claude, opencode };
 
@@ -325,13 +326,15 @@ Expected: FAIL — `Cannot find module './probe.js'`.
 - [ ] **Step 3: Move the parser (without the tmux-driving probe)**
 
 ```ts
+import { spawnSync } from 'node:child_process';
 // src/providers/claude/probe.ts
 // Pure /usage pane parser + cache helpers, plus the tmux-driving probe. The
 // non-tmux parts are pure so they can be unit-tested without a real Claude
 // install; the tmux probe is exercised by integration / smoke tests.
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+
+import { CLAUDE_BIN, TMUX_BIN, WARMUP_WORKDIR, USAGE_CACHE } from '../../paths.js';
 import {
   FIVE_HOURS_MS,
   parseReset,
@@ -342,7 +345,6 @@ import {
   differenceInMilliseconds,
   isAfter,
 } from '../../time.js';
-import { CLAUDE_BIN, TMUX_BIN, WARMUP_WORKDIR, USAGE_CACHE } from '../../paths.js';
 import type { Config, LimitBlock, UsageCache, UsageSnapshot, UsageView } from '../../types.js';
 import type { ProviderConfig, ProviderUsage } from '../types.js';
 
@@ -493,11 +495,12 @@ Expected: PASS — same assertions as before, just on the new path.
 ```ts
 // src/providers/claude.ts (replace the stub)
 import path from 'node:path';
+
 import { WARMUP_HOME } from '../paths.js';
+import type { UsageSnapshot } from '../types.js';
 import { decide } from './claude/decide.js';
 import { probe, parseUsage, inferFromCache } from './claude/probe.js';
 import type { Provider, ProviderConfig, ProviderUsage, SharedConfig } from './types.js';
-import type { UsageSnapshot } from '../types.js';
 
 function cfgFromEnv(env: Record<string, string>, shared: SharedConfig): ProviderConfig {
   const num = (v: string | undefined): number | undefined =>
@@ -690,9 +693,10 @@ Expected: PASS (types.ts re-exports, no consumers yet).
 - [ ] **Step 1: Write the failing test for migration**
 
 ```ts
+import assert from 'node:assert/strict';
 // test/config-migration.test.ts
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+
 import { parseConfig, serializeConfig } from '../src/config.js';
 
 const OLD_ENV = `
@@ -761,9 +765,10 @@ Replace `src/config.ts` with:
 // defaults for the `claude` provider when WARMUP_PROVIDERS is absent.
 import fs from 'node:fs';
 import path from 'node:path';
+
 import { CONFIG_PATH } from './paths.js';
-import type { Config, ConfigInput, Mode, Model, Scheduler, SmartConfig } from './types.js';
 import type { ProviderConfig, ProviderId, SharedConfig } from './providers/types.js';
+import type { Config, ConfigInput, Mode, Model, Scheduler, SmartConfig } from './types.js';
 
 export const MODELS: readonly Model[] = ['haiku', 'sonnet', 'opus'];
 const IS_DARWIN = process.platform === 'darwin';
@@ -1083,9 +1088,10 @@ Expected: PASS — 3 tests.
 Adjust the assertions to the new `Config` shape (`shared`, `providerIds`, `providers.claude`, etc.). The existing test exercises a `DEFAULT_CONFIG`-like object; rewrite each assertion to access the new fields. For example:
 
 ```ts
+import assert from 'node:assert/strict';
 // test/config.test.ts
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+
 import { parseConfig, serializeConfig, MODELS, SCHEDULERS, MODES } from '../src/config.js';
 
 test('defaults are exposed', () => {
@@ -1293,12 +1299,13 @@ import { ARM_CLAUDE_SH } from '../assets.js';
 - [ ] **Step 5: Update `runner.ts` to call `ensureArmScript` and pass provider env**
 
 ```ts
+import { spawnSync } from 'node:child_process';
 // src/runner.ts (replace the runNow function)
 import fs from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { WARMUP_LOG, LOG_DIR } from './paths.js';
-import { loadConfig } from './config.js';
+
 import { ensureArmScript } from './assets.js';
+import { loadConfig } from './config.js';
+import { WARMUP_LOG, LOG_DIR } from './paths.js';
 import { getProvider } from './providers/index.js';
 import type { ProviderId } from './providers/types.js';
 
@@ -1353,9 +1360,10 @@ Expected: typecheck may surface dependents that still import from `src/usage.ts`
 - [ ] **Step 1: Write the failing test**
 
 ```ts
+import assert from 'node:assert/strict';
 // test/tick.test.ts
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+
 import { runTick } from '../src/tick.js';
 
 const NOW = new Date(2026, 5, 13, 13, 0, 0);
@@ -1390,12 +1398,12 @@ Expected: FAIL — the current `runTick` returns an object, not an array.
 // One tick: probe every enabled provider, decide per provider, arm if warranted.
 // This is what the scheduler runs every `tickMinutes` in smart mode.
 import { loadConfig } from './config.js';
-import { getProvider } from './providers/index.js';
-import { runNow } from './runner.js';
 import { appendLog, pruneLogs } from './logs.js';
-import { writeProviderCache, readUsageCache } from './usage-cache.js';
+import { getProvider } from './providers/index.js';
 import type { Decision, ProviderId, ProviderUsage } from './providers/types.js';
+import { runNow } from './runner.js';
 import type { UsageCache } from './types.js';
+import { writeProviderCache, readUsageCache } from './usage-cache.js';
 
 export interface TickOptions {
   dryRun?: boolean;
@@ -1480,9 +1488,10 @@ function inferFromCacheFor(id: ProviderId, now: Date): ProviderUsage {
 // the per-provider UsageCache. Old (flat) shapes are wrapped as {claude:…}.
 import fs from 'node:fs';
 import path from 'node:path';
+
 import { USAGE_CACHE } from './paths.js';
-import type { UsageCache } from './types.js';
 import type { ProviderId } from './providers/types.js';
+import type { UsageCache } from './types.js';
 
 export type ProviderCacheMap = Partial<Record<ProviderId, UsageCache>>;
 
@@ -1554,9 +1563,10 @@ Open `docs/superpowers/specs/2026-06-15-opencode-spike.md`. The fields recorded 
 - [ ] **Step 2: Write the opencode probe parser test**
 
 ```ts
+import assert from 'node:assert/strict';
 // src/providers/opencode/probe.test.ts
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+
 import { parseOpencodeUsage } from './probe.js';
 
 const SPIKE_OUTPUT = `
@@ -1584,10 +1594,11 @@ Expected: FAIL — `Cannot find module './probe.js'`.
 - [ ] **Step 4: Write the parser**
 
 ```ts
+import { isAfter } from 'date-fns';
+
 // src/providers/opencode/probe.ts
 // Opencode /usage pane parser. Driven by the Phase 0 spike output.
 import { parseReset } from '../../time.js';
-import { isAfter } from 'date-fns';
 import type { LimitBlock, UsageSnapshot } from '../../types.js';
 import type { ProviderUsage } from '../types.js';
 
@@ -1629,9 +1640,10 @@ Expected: PASS.
 - [ ] **Step 6: Write the opencode decide test (mirror claude's)**
 
 ```ts
+import assert from 'node:assert/strict';
 // src/providers/opencode/decide.test.ts
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+
 import { decide } from './decide.js';
 
 const CFG = { workStart: 7, workEnd: 22, weeklyStopPercent: 85 };
@@ -1846,9 +1858,10 @@ git commit -m "feat(opencode): provider with spike-driven probe + decide + arm s
 - [ ] **Step 1: Write the failing test**
 
 ```ts
+import assert from 'node:assert/strict';
 // test/status.test.ts
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+
 import { getStatus } from '../src/status.js';
 
 test('getStatus reports a per-provider view', () => {
@@ -1872,16 +1885,16 @@ Expected: FAIL — `s.providers` doesn't exist yet.
 - [ ] **Step 3: Rewrite `status.ts`**
 
 ```ts
+import { loadConfig } from './config.js';
+import * as cron from './cron.js';
+import { pad2 } from './format.js';
 // src/status.ts
 import * as launchd from './launchd.js';
-import * as cron from './cron.js';
-import { loadConfig } from './config.js';
-import { lastRunSummary } from './runner.js';
-import { readUsageCache } from './usage-cache.js';
-import { getHours } from './time.js';
-import { pad2 } from './format.js';
 import type { ProviderId, UsageCache } from './providers/types.js';
+import { lastRunSummary } from './runner.js';
+import { getHours } from './time.js';
 import type { Status } from './types.js';
+import { readUsageCache } from './usage-cache.js';
 
 export interface ProviderStatus {
   enabled: boolean;
@@ -1962,11 +1975,11 @@ Expected: PASS.
 - [ ] **Step 1: Replace the file**
 
 ```ts
+import { pad2, ago } from './format.js';
+import { formatUsage } from './providers/claude/probe.js';
 // src/print-status.ts
 import { getStatus } from './status.js';
 import { readUsageCache } from './usage-cache.js';
-import { formatUsage } from './providers/claude/probe.js';
-import { pad2, ago } from './format.js';
 
 const dot = (on: boolean): string => (on ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m');
 
@@ -2067,6 +2080,7 @@ export interface UseWarmupUiState {
 ```tsx
 // src/ui/App.tsx (add to the render tree, above the existing sections)
 import { Box, Text } from 'ink';
+
 import type { ProviderId } from '../providers/types.js';
 
 interface AppProps {

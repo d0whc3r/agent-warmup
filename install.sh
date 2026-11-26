@@ -45,11 +45,22 @@ detect_target() {
   echo "${os}-${arch}"
 }
 
+validate_repo() {
+  if [[ ! "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+    echo "✗ invalid REPO: ${REPO} (expected owner/repo)" >&2
+    exit 1
+  fi
+}
+
 release_tag() {
   local version="${VERSION:-latest}"
   if [ "$version" = latest ]; then
     echo latest
     return
+  fi
+  if [[ ! "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "✗ invalid VERSION: ${version} (expected semver like v1.2.3 or latest)" >&2
+    exit 1
   fi
   case "$version" in
     v*) echo "$version" ;;
@@ -57,15 +68,45 @@ release_tag() {
   esac
 }
 
-download_url() {
-  local target="$1"
-  local tag asset
+release_asset_url() {
+  local asset="$1"
+  local tag
+  validate_repo
   tag="$(release_tag)"
-  asset="${BIN_NAME}-${target}"
   if [ "$tag" = latest ]; then
     echo "https://github.com/${REPO}/releases/latest/download/${asset}"
   else
     echo "https://github.com/${REPO}/releases/download/${tag}/${asset}"
+  fi
+}
+
+download_url() {
+  local target="$1"
+  release_asset_url "${BIN_NAME}-${target}"
+}
+
+sha256_of() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  else
+    return 1
+  fi
+}
+
+verify_checksum() {
+  local file="$1" asset="$2" sums_file="$3" expected actual
+  [ -s "$sums_file" ] || return 0
+  expected="$(awk -v name="$asset" '$2 == name && $1 ~ /^[0-9a-fA-F]{64}$/ { print tolower($1); exit }' "$sums_file")"
+  [ -n "$expected" ] || return 0
+  actual="$(sha256_of "$file" | tr '[:upper:]' '[:lower:]')" || return 0
+  if [ "$actual" != "$expected" ]; then
+    echo "✗ checksum mismatch for ${asset}" >&2
+    echo "  expected: ${expected}" >&2
+    echo "  actual:   ${actual}" >&2
+    exit 1
   fi
 }
 
@@ -130,14 +171,16 @@ seed_config() {
 }
 
 install_binary() {
-  local target url dir dest tmp cfg_existed=0
+  local target asset url sums_url dir dest tmp sums_tmp cfg_existed=0
   : "${HOME:?HOME is not set}"
   need_cmd curl
   need_cmd mktemp
   need_cmd uname
 
   target="$(detect_target)"
+  asset="${BIN_NAME}-${target}"
   url="$(download_url "$target")"
+  sums_url="$(release_asset_url "SHA256SUMS")"
   dir="$(install_dir)"
   dest="${dir}/${BIN_NAME}"
 
@@ -146,9 +189,12 @@ install_binary() {
 
   mkdir -p "$dir"
   tmp="$(mktemp "${TMPDIR:-/tmp}/${BIN_NAME}.XXXXXX")"
-  trap 'rm -f "$tmp"' EXIT
+  sums_tmp="$(mktemp "${TMPDIR:-/tmp}/${BIN_NAME}-sums.XXXXXX")"
+  trap 'rm -f "$tmp" "$sums_tmp"' EXIT
 
-  if ! curl -fL --retry 3 --retry-delay 1 -o "$tmp" "$url"; then
+  curl -fsSL --proto=https --tlsv1.2 --retry 2 --retry-delay 1 -o "$sums_tmp" "$sums_url" 2>/dev/null || rm -f "$sums_tmp"
+
+  if ! curl -fL --proto=https --tlsv1.2 --retry 3 --retry-delay 1 -o "$tmp" "$url"; then
     echo "✗ failed to download ${url}" >&2
     echo "  Check https://github.com/${REPO}/releases for available assets." >&2
     exit 1
@@ -157,6 +203,9 @@ install_binary() {
     echo "✗ download was empty: ${url}" >&2
     exit 1
   fi
+
+  verify_checksum "$tmp" "$asset" "$sums_tmp"
+  rm -f "$sums_tmp"
 
   chmod +x "$tmp"
   if [ "$(uname -s)" = Darwin ]; then

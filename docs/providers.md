@@ -8,6 +8,7 @@
 | `kimi`     | Kimi Code            | `kimi -p`                            | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding`        |
 | `opencode` | OpenCode Go          | `opencode run` + `opencode stats`    | live weekly + local session estimate  | `opencode-go/deepseek-v4-flash`    |
 | `minimax`  | MiniMax Token Plan   | authenticated OpenCode provider      | local five-hour estimate              | `minimax-coding-plan/MiniMax-M2.7` |
+| `agy`      | Antigravity CLI      | `agy --print --sandbox`              | local five-hour estimate              | `gemini-4-hydrogen`                |
 
 Claude is enabled by default. Every other provider is opt-in because a warmup
 consumes real quota.
@@ -24,7 +25,7 @@ usable agents where there is one binary and one working login.
 
 ## How usage is read
 
-Z.AI, Kimi and MiniMax expose no stable machine-readable quota endpoint suitable
+Z.AI, Kimi, MiniMax and Antigravity CLI expose no stable machine-readable quota endpoint suitable
 for unattended polling, so the CLI conservatively treats a successful warmup
 within the last five hours as an active window — shown as `active (estimated)`
 in status and the TUI.

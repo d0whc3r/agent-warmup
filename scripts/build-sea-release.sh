@@ -50,6 +50,16 @@ for TARGET in $TARGETS; do
   echo "::endgroup::"
 done
 
+# Emit SHA-256 checksums for all built binaries so install.sh can verify downloads.
+(
+  cd out
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum agent-warmup-* > SHA256SUMS
+  else
+    shasum -a 256 agent-warmup-* > SHA256SUMS
+  fi
+)
+
 # Only a binary for the host os/arch can be executed here; the rest are foreign.
 HOST="$(node -p 'process.platform + "-" + process.arch')"
 HOST_BIN="out/agent-warmup-${HOST}"

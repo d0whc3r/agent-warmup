@@ -19,7 +19,7 @@ export function ensureArmScript(id: ProviderId): string {
     fs.chmodSync(dest, 0o755);
     return dest;
   }
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
   // Prefer the embedded asset (so a single executable ships everything);
   // fall back to the provider's armScript() string if the asset isn't
   // registered (defensive: the asset is only injected at SEA build time).
@@ -30,7 +30,7 @@ export function ensureArmScript(id: ProviderId): string {
   } catch {
     content = getProvider(id).armScript();
   }
-  fs.writeFileSync(dest, content);
-  fs.chmodSync(dest, 0o755);
+  fs.writeFileSync(dest, content, { mode: 0o700 });
+  fs.chmodSync(dest, 0o700);
   return dest;
 }

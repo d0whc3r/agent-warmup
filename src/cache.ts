@@ -37,8 +37,10 @@ export function readCache(): UsageCache {
 }
 
 export function writeCache(cache: UsageCache): void {
-  fs.mkdirSync(path.dirname(USAGE_CACHE), { recursive: true });
-  fs.writeFileSync(USAGE_CACHE, JSON.stringify(cache, null, 2) + '\n');
+  fs.mkdirSync(path.dirname(USAGE_CACHE), { recursive: true, mode: 0o700 });
+  const tmp = `${USAGE_CACHE}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cache, null, 2) + '\n', { mode: 0o600 });
+  fs.renameSync(tmp, USAGE_CACHE);
 }
 
 // Read-patch-write one provider's entry. Providers run concurrently (parallel tick

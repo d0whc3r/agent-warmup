@@ -72,9 +72,14 @@ export function parseUsage(text: string, now: Date = new Date()): ProviderUsage 
   return { session, week, weekModel };
 }
 
+function positiveSeconds(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 // Read Claude's three limit blocks by driving `/usage` in a throwaway tmux session
 // and parsing the rendered pane. Returns null on any failure.
-export async function probe(ctx: ProbeContext): Promise<ProviderUsage | null> {
+async function probe(ctx: ProbeContext): Promise<ProviderUsage | null> {
   // Honor the per-provider binary path the user set in WARMUP_CLAUDE_BIN (the
   // legacy `CLAUDE_BIN` env var still works for the arm script's own fallback,
   // but the probe should always read the provider config so a custom install
@@ -82,8 +87,8 @@ export async function probe(ctx: ProbeContext): Promise<ProviderUsage | null> {
   const binary = expandHome(ctx.cfg.binary);
   if (!isExecutable(binary) || !isExecutable(TMUX_BIN)) return null;
   const session = `${ctx.cfg.tmuxSession}-usage`;
-  const readyWait = Number(process.env.WARMUP_READY_WAIT || 12);
-  const responseWait = Number(process.env.WARMUP_RESPONSE_WAIT || 6);
+  const readyWait = positiveSeconds(process.env.WARMUP_READY_WAIT, 12);
+  const responseWait = positiveSeconds(process.env.WARMUP_RESPONSE_WAIT, 6);
   try {
     tmux(['kill-session', '-t', session]);
     fs.mkdirSync(WARMUP_WORKDIR, { recursive: true });

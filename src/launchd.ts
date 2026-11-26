@@ -9,6 +9,19 @@ import path from 'node:path';
 import { HOME, LABEL, PLIST_PATH, LOG_DIR, GUI_DOMAIN, SELF_INVOCATION } from './paths.js';
 import type { MultiConfig } from './types.js';
 
+function escapeXml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function launchctl(args: string[]) {
   return spawnSync('launchctl', args, { encoding: 'utf8' });
 }
@@ -23,6 +36,9 @@ function intervalsFor(multi: MultiConfig): string[] {
   const enabled = multi.shared.providers
     .map((id) => multi.providers[id])
     .filter((p): p is NonNullable<typeof p> => !!p);
+  if (enabled.length === 0) {
+    return [];
+  }
   if (multi.shared.mode === 'smart') {
     const { tickMinutes } = multi.shared;
     const workStart = Math.min(...enabled.map((p) => p.workStart));
@@ -48,14 +64,14 @@ function programArgs(_multi: MultiConfig): string[] {
 export function generatePlist(multi: MultiConfig): string {
   const intervals = intervalsFor(multi).join('\n');
   const args = programArgs(multi)
-    .map((a) => `        <string>${a}</string>`)
+    .map((a) => `        <string>${escapeXml(a)}</string>`)
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${LABEL}</string>
+    <string>${escapeXml(LABEL)}</string>
     <key>ProgramArguments</key>
     <array>
  ${args}
@@ -67,13 +83,13 @@ export function generatePlist(multi: MultiConfig): string {
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>${path.join(LOG_DIR, 'launchd.out.log')}</string>
+    <string>${escapeXml(path.join(LOG_DIR, 'launchd.out.log'))}</string>
     <key>StandardErrorPath</key>
-    <string>${path.join(LOG_DIR, 'launchd.err.log')}</string>
+    <string>${escapeXml(path.join(LOG_DIR, 'launchd.err.log'))}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
-        <string>${HOME}</string>
+        <string>${escapeXml(HOME)}</string>
     </dict>
 </dict>
 </plist>
@@ -82,8 +98,8 @@ export function generatePlist(multi: MultiConfig): string {
 
 export function apply(multi: MultiConfig): boolean {
   fs.mkdirSync(path.dirname(PLIST_PATH), { recursive: true });
-  fs.mkdirSync(LOG_DIR, { recursive: true });
-  fs.writeFileSync(PLIST_PATH, generatePlist(multi));
+  fs.mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(PLIST_PATH, generatePlist(multi), { mode: 0o644 });
   launchctl(['bootout', `${GUI_DOMAIN}/${LABEL}`]); // ignore error if not loaded
   const r = launchctl(['bootstrap', GUI_DOMAIN, PLIST_PATH]);
   launchctl(['enable', `${GUI_DOMAIN}/${LABEL}`]);
@@ -128,7 +144,7 @@ export function status(): {
   const loaded = printed.status === 0;
   const running = loaded && /state = running/.test(printed.stdout);
   const disabledList = launchctl(['print-disabled', GUI_DOMAIN]).stdout || '';
-  const m = disabledList.match(new RegExp(`"${LABEL}"\\s*=>\\s*(\\w+)`));
+  const m = disabledList.match(new RegExp(`"${escapeRegExp(LABEL)}"\\s*=>\\s*(\\w+)`));
   const enabled = m ? m[1] === 'enabled' || m[1] === 'false' : true;
   return { installed, loaded, running, enabled };
 }

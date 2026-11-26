@@ -4,7 +4,13 @@
 import type { MultiConfig, ProviderId, UsageCache, UsageView } from '../types.js';
 import { claudeProvider, formatUsage } from './claude.js';
 import { opencodeProvider } from './opencode.js';
-import { codexProvider, kimiProvider, minimaxProvider, zaiProvider } from './subscriptions.js';
+import {
+  agyProvider,
+  codexProvider,
+  kimiProvider,
+  minimaxProvider,
+  zaiProvider,
+} from './subscriptions.js';
 import type { Provider } from './types.js';
 
 // The full set of built-in providers. New providers get added here (and only
@@ -16,6 +22,7 @@ const REGISTRY: Record<ProviderId, Provider> = {
   zai: zaiProvider,
   kimi: kimiProvider,
   minimax: minimaxProvider,
+  agy: agyProvider,
 };
 
 export function getProvider(id: ProviderId): Provider {
@@ -33,6 +40,7 @@ export const ALL_PROVIDER_IDS: readonly ProviderId[] = [
   'kimi',
   'opencode',
   'minimax',
+  'agy',
 ];
 
 // Display view of one provider's usage. Providers without a live probe (or whose

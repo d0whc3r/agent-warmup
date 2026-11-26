@@ -18,7 +18,8 @@
           { "path": "out/agent-warmup-linux-x64", "label": "agent-warmup-linux-x64" },
           { "path": "out/agent-warmup-linux-arm64", "label": "agent-warmup-linux-arm64" },
           { "path": "out/agent-warmup-darwin-x64", "label": "agent-warmup-darwin-x64" },
-          { "path": "out/agent-warmup-darwin-arm64", "label": "agent-warmup-darwin-arm64" }
+          { "path": "out/agent-warmup-darwin-arm64", "label": "agent-warmup-darwin-arm64" },
+          { "path": "out/SHA256SUMS", "label": "SHA256SUMS" }
         ]
       }
     ],

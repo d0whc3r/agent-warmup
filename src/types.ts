@@ -7,7 +7,7 @@ export type Scheduler = 'launchd' | 'cron';
 
 // Multi-provider identity. The string literal stays in sync with the env key
 // prefix (WARMUP_<UPPER_ID>_*); the registry is the runtime source of truth.
-export type ProviderId = 'claude' | 'opencode' | 'codex' | 'zai' | 'kimi' | 'minimax';
+export type ProviderId = 'claude' | 'opencode' | 'codex' | 'zai' | 'kimi' | 'minimax' | 'agy';
 
 // A parsed /usage block (session / weekly / per-model). `resetsAt` is a Date when
 // freshly parsed; the cache round-trip turns it into an ISO string, so consumers
@@ -112,6 +112,7 @@ export interface ConfigInput {
   zai?: Partial<ProviderConfig>;
   kimi?: Partial<ProviderConfig>;
   minimax?: Partial<ProviderConfig>;
+  agy?: Partial<ProviderConfig>;
 }
 
 // The legacy "merged view" config (selected provider + shared, flattened for

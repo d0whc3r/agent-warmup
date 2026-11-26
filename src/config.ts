@@ -66,6 +66,10 @@ function defaultProviderConfig(id: ProviderId): ProviderConfig {
       binary: '~/.opencode/bin/opencode',
       model: 'minimax-coding-plan/MiniMax-M2.7',
     },
+    agy: {
+      binary: '~/.local/bin/agy',
+      model: 'gemini-4-hydrogen',
+    },
   };
   return {
     id,
@@ -133,6 +137,14 @@ export function loadConfig(): MultiConfig {
   return parseMultiConfig(text);
 }
 
+function writeFileAtomic(filePath: string, content: string): void {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const tmp = `${filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  fs.writeFileSync(tmp, content, { mode: 0o600 });
+  fs.renameSync(tmp, filePath);
+}
+
 // Public API: persist a config. Accepts either the legacy `Config`/`ConfigInput`
 // shape (decomposed into the new schema, with shared.mode/scheduler lifted
 // and the rest going to the selected provider) or a partial MultiConfig.
@@ -144,12 +156,12 @@ export function saveConfig(input: ConfigInput | Partial<MultiConfig>): MultiConf
     const existing = fs.readFileSync(CONFIG_PATH, 'utf8');
     if (existing && !/(^|\n)WARMUP_PROVIDERS\s*=/.test(existing)) {
       fs.copyFileSync(CONFIG_PATH, CONFIG_PATH + '.bak');
+      fs.chmodSync(CONFIG_PATH + '.bak', 0o600);
     }
   } catch {
     /* no existing file -- nothing to back up */
   }
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, serializeMultiConfig(next));
+  writeFileAtomic(CONFIG_PATH, serializeMultiConfig(next));
   return next;
 }
 
@@ -159,8 +171,7 @@ export function saveConfig(input: ConfigInput | Partial<MultiConfig>): MultiConf
 // example file has to ship with the binary. Never overwrites an existing config.
 export function ensureConfigFile(): boolean {
   if (fs.existsSync(CONFIG_PATH)) return false;
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, serialize(cloneDefault()));
+  writeFileAtomic(CONFIG_PATH, serialize(cloneDefault()));
   return true;
 }
 
@@ -404,22 +415,26 @@ function normalizeProvider(
     String(env[`WARMUP_${U}_TMUX_SESSION`] ?? fromStructured.tmuxSession ?? defaults.tmuxSession)
       .trim()
       .replace(/[\s.:]+/g, '-') || defaults.tmuxSession;
+  const safeWorkStart = clampHour(workStart, defaults.workStart, 0, 23);
   return {
     id,
     enabled,
-    binary: env[`WARMUP_${U}_BIN`] ?? fromStructured.binary ?? defaults.binary,
-    model: env[`WARMUP_${U}_MODEL`] ?? fromStructured.model ?? defaults.model,
+    binary: sanitizeEnvValue(env[`WARMUP_${U}_BIN`] ?? fromStructured.binary ?? defaults.binary),
+    model: sanitizeEnvValue(env[`WARMUP_${U}_MODEL`] ?? fromStructured.model ?? defaults.model),
     tmuxSession,
     armScriptPath: defaults.armScriptPath, // resolved at runtime
-    workStart: clampHour(workStart, defaults.workStart, 0, 23),
-    workEnd: Math.max(
-      clampHour(workStart, defaults.workStart, 0, 23) + 1,
-      clampHour(workEnd, defaults.workEnd, 0, 23),
-    ),
+    workStart: safeWorkStart,
+    workEnd: Math.max(safeWorkStart + 1, clampHour(workEnd, defaults.workEnd, 0, 23)),
     weeklyStopPercent: clampPercent(weeklyStopPercent, defaults.weeklyStopPercent),
     schedule,
     extra: { ...defaults.extra, ...fromStructured.extra },
   };
+}
+
+// Strip line breaks and NUL bytes so a user-supplied path or model id can never
+// inject additional KEY=VALUE lines into warmup.env.
+function sanitizeEnvValue(value: string): string {
+  return value.replace(/[\r\n\0]+/g, '').trim();
 }
 
 function numFrom(env: string | undefined, structured: unknown): number | undefined {
@@ -511,9 +526,9 @@ function serialize(multi: MultiConfig): string {
     if (!p) continue;
     lines.push(`# ── Provider: ${id} ─${'─'.repeat(Math.max(0, 50 - id.length))}`);
     lines.push(`WARMUP_${id.toUpperCase()}_ENABLED=${p.enabled}`);
-    lines.push(`WARMUP_${id.toUpperCase()}_BIN=${p.binary}`);
-    lines.push(`WARMUP_${id.toUpperCase()}_MODEL=${p.model}`);
-    lines.push(`WARMUP_${id.toUpperCase()}_TMUX_SESSION=${p.tmuxSession}`);
+    lines.push(`WARMUP_${id.toUpperCase()}_BIN=${sanitizeEnvValue(p.binary)}`);
+    lines.push(`WARMUP_${id.toUpperCase()}_MODEL=${sanitizeEnvValue(p.model)}`);
+    lines.push(`WARMUP_${id.toUpperCase()}_TMUX_SESSION=${sanitizeEnvValue(p.tmuxSession)}`);
     lines.push(`WARMUP_${id.toUpperCase()}_WORK_START=${p.workStart}`);
     lines.push(`WARMUP_${id.toUpperCase()}_WORK_END=${p.workEnd}`);
     lines.push(`WARMUP_${id.toUpperCase()}_WEEKLY_STOP_PERCENT=${p.weeklyStopPercent}`);

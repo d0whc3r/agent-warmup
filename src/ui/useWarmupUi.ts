@@ -1,4 +1,4 @@
-import { useApp, useInput, useStdout } from 'ink';
+import { useApp, useInput, useWindowSize } from 'ink';
 // The TUI controller: owns all state, the keyboard handlers and useInput, and hands
 // the components a flat, read-only view-model. Keeping the logic here lets every
 // component stay a pure function of its props.
@@ -25,7 +25,17 @@ import { pad2, tildify } from '../format.js';
 import { ALL_PROVIDER_IDS, getProvider, usageView } from '../providers/index.js';
 import * as schedule from '../schedule.js';
 import { getStatus } from '../status.js';
-import type { Config, MultiConfig, ProviderId, SmartConfig, Status, UiAction } from '../types.js';
+import type {
+  Config,
+  Mode,
+  MultiConfig,
+  ProviderId,
+  ProviderInput,
+  Scheduler,
+  SmartConfig,
+  Status,
+  UiAction,
+} from '../types.js';
 import {
   buildRows,
   hoursPerRow,
@@ -54,10 +64,8 @@ export function useWarmupUi({
   initialTab?: TabKey;
 } = {}) {
   const { exit } = useApp();
-  const { stdout } = useStdout();
-  const [multi, setMulti] = useState<import('../types.js').MultiConfig>(
-    () => initialConfig ?? loadConfig(),
-  );
+  const { columns } = useWindowSize();
+  const [multi, setMulti] = useState<MultiConfig>(() => initialConfig ?? loadConfig());
   const [view, setView] = useState<Config>(() => getView(multi));
   const [status, setStatus] = useState<Status>(() => initialStatus ?? getStatus());
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
@@ -82,7 +90,7 @@ export function useWarmupUi({
   // treats that like a missing size. Wide terminals get a two-column layout (capped
   // at WIDE_MAX); everything else is a single column clamped to MAX_WIDTH, which on a
   // narrow terminal is just the terminal width.
-  const cols = stdout?.columns || 80;
+  const cols = columns || 80;
   const wide = cols >= WIDE_AT;
   const width = Math.min(cols, wide ? WIDE_MAX : MAX_WIDTH);
   const gridCols = hoursPerRow((wide ? Math.floor(width / 2) : width) - 8);
@@ -137,8 +145,8 @@ export function useWarmupUi({
   };
 
   const toggleScheduler = () => {
-    const next: import('../types.js').Scheduler = cycle(SCHEDULERS, view.scheduler, 1);
-    const nextMulti: import('../types.js').MultiConfig = {
+    const next: Scheduler = cycle(SCHEDULERS, view.scheduler, 1);
+    const nextMulti: MultiConfig = {
       ...multi,
       shared: { ...multi.shared, scheduler: next },
     };
@@ -150,8 +158,8 @@ export function useWarmupUi({
   };
 
   const toggleMode = () => {
-    const next: import('../types.js').Mode = view.mode === 'smart' ? 'fixed' : 'smart';
-    const nextMulti: import('../types.js').MultiConfig = {
+    const next: Mode = view.mode === 'smart' ? 'fixed' : 'smart';
+    const nextMulti: MultiConfig = {
       ...multi,
       shared: { ...multi.shared, mode: next },
     };
@@ -222,8 +230,8 @@ export function useWarmupUi({
       return;
     }
     const i = ids.indexOf(multi.shared.selectedProvider);
-    const next: import('../types.js').ProviderId = ids[(i + 1 + ids.length) % ids.length]!;
-    const nextMulti: import('../types.js').MultiConfig = {
+    const next: ProviderId = ids[(i + 1 + ids.length) % ids.length]!;
+    const nextMulti: MultiConfig = {
       ...multi,
       shared: { ...multi.shared, selectedProvider: next },
     };
@@ -259,7 +267,7 @@ export function useWarmupUi({
   };
   const cycleTick = (d: number) => {
     const v = cycle(TICK_CHOICES, view.smart.tickMinutes, d);
-    const nextMulti: import('../types.js').MultiConfig = {
+    const nextMulti: MultiConfig = {
       ...multi,
       shared: { ...multi.shared, tickMinutes: v },
     };
@@ -305,9 +313,13 @@ export function useWarmupUi({
 
   const doAction = (key: string) => {
     if (key === 'save') {
-      schedule.applySchedule(multi);
-      setDirty(false);
-      setMessage(`Saved & applied (${multi.shared.scheduler})`);
+      const ok = schedule.applySchedule(multi);
+      if (ok) {
+        setDirty(false);
+        setMessage(`Saved & applied (${multi.shared.scheduler})`);
+      } else {
+        setMessage(`Failed to apply (${multi.shared.scheduler})`);
+      }
       refresh();
     } else if (key === 'stop') {
       schedule.stopSchedule();
@@ -468,11 +480,7 @@ function knownAgents(multi: MultiConfig): ProviderId[] {
 }
 
 // Apply a partial patch to a specific provider's config in a MultiConfig.
-function patchProvider(
-  multi: import('../types.js').MultiConfig,
-  id: import('../types.js').ProviderId,
-  patch: import('../types.js').ProviderInput,
-): import('../types.js').MultiConfig {
+function patchProvider(multi: MultiConfig, id: ProviderId, patch: ProviderInput): MultiConfig {
   const p = multi.providers[id];
   if (!p) return multi;
   return {

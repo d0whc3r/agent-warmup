@@ -7,6 +7,7 @@
 # changes, so the probe keeps replaying whatever the user's last interactive
 # session left behind and the reset clock goes stale. See probeCodex().
 set -euo pipefail
+umask 077
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 

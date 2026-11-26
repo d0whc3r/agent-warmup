@@ -10,15 +10,21 @@ import { VERSION } from './version.js';
 const REPO = 'd0whc3r/agent-warmup';
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const INSTALL_SCRIPT = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
+const FETCH_TIMEOUT_MS = 15_000;
+const RELEASE_TAG_RE = /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 // Tag of the newest published release, e.g. "v1.2.3".
 export async function latestTag(): Promise<string> {
   const res = await fetch(LATEST_RELEASE_API, {
     headers: { accept: 'application/vnd.github+json' },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`GitHub answered ${res.status} ${res.statusText}`);
   const release = (await res.json()) as { tag_name?: string };
   if (!release.tag_name) throw new Error('the latest release has no tag');
+  if (!RELEASE_TAG_RE.test(release.tag_name)) {
+    throw new Error(`invalid release tag: ${release.tag_name}`);
+  }
   return release.tag_name;
 }
 
@@ -44,12 +50,23 @@ export async function upgrade(): Promise<number> {
     return 0;
   }
 
+  let script: string;
+  try {
+    const res = await fetch(INSTALL_SCRIPT, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) throw new Error(`installer download answered ${res.status} ${res.statusText}`);
+    script = await res.text();
+  } catch (err) {
+    console.error(`✗ could not download installer: ${(err as Error).message}`);
+    return 1;
+  }
+
   const dir = path.dirname(process.execPath);
   console.log(`› upgrading ${VERSION} → ${tag} in ${dir}`);
   // Unlinking a running executable is fine on macOS/Linux: the kernel keeps the
   // inode alive until this process exits, so the installer can swap it underneath us.
-  const run = spawnSync('bash', ['-c', `curl -fsSL "${INSTALL_SCRIPT}" | bash`], {
-    stdio: 'inherit',
+  const run = spawnSync('bash', [], {
+    input: script,
+    stdio: ['pipe', 'inherit', 'inherit'],
     env: { ...process.env, INSTALL_DIR: dir, VERSION: tag },
   });
   return run.status ?? 1;

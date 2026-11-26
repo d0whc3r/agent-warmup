@@ -241,3 +241,51 @@ test('the install seeds warmup.env and keeps an existing one', () => {
   assert.match(again.stdout, /config\s+.*warmup\.env \(kept\)/);
   assert.equal(fs.readFileSync(cfg, 'utf8'), 'WARMUP_PROVIDERS=kimi\n');
 });
+
+test('install.sh rejects invalid REPO and VERSION values', () => {
+  const badRepo = runInstall(
+    ['--print-url'],
+    { REPO: 'evil/repo/../other' },
+    { stubs: { uname: unameStub('Linux', 'x86_64') } },
+  );
+  assert.notEqual(badRepo.status, 0);
+  assert.match(badRepo.stderr, /invalid REPO/);
+
+  const badVer = runInstall(
+    ['--print-url'],
+    { VERSION: '../v1.0.0' },
+    { stubs: { uname: unameStub('Linux', 'x86_64') } },
+  );
+  assert.notEqual(badVer.status, 0);
+  assert.match(badVer.stderr, /invalid VERSION/);
+});
+
+test('install.sh aborts when SHA256SUMS mismatches the downloaded binary', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-warmup-sha-'));
+  const destDir = path.join(tmp, 'bin');
+  const badSums = `${'0'.repeat(64)}  agent-warmup-linux-x64`;
+  const curlWithSums = `#!/bin/sh
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o|--output) out="$2"; shift 2 ;;
+    --retry|--retry-delay) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+case "$url" in
+  */SHA256SUMS) printf '%s\\n' '${badSums}' > "$out" ;;
+  *) printf '#!/bin/sh\\nexit 0\\n' > "$out" ;;
+esac
+`;
+  const result = runInstall(
+    [],
+    { HOME: tmp, INSTALL_DIR: destDir },
+    { stubs: { uname: unameStub('Linux', 'x86_64'), curl: curlWithSums } },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /checksum mismatch/);
+  assert.equal(fs.existsSync(path.join(destDir, 'agent-warmup')), false);
+});

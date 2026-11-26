@@ -13,7 +13,15 @@ import { decideForMode } from '../src/tick.js';
 import type { ProviderUsage } from '../src/types.js';
 
 test('all built-in subscriptions have config, metadata and an arm script', () => {
-  assert.deepEqual(ALL_PROVIDER_IDS, ['claude', 'codex', 'zai', 'kimi', 'opencode', 'minimax']);
+  assert.deepEqual(ALL_PROVIDER_IDS, [
+    'claude',
+    'codex',
+    'zai',
+    'kimi',
+    'opencode',
+    'minimax',
+    'agy',
+  ]);
   for (const id of ALL_PROVIDER_IDS) {
     const config = DEFAULT_MULTI.providers[id];
     const provider = getProvider(id);
@@ -247,7 +255,7 @@ test('codex probes read the newest rollout by name, skipping lines it cannot par
 
 test('cache-only providers report estimated usage and probe to nothing', () => {
   const now = new Date('2026-09-05T10:00:00Z');
-  for (const id of ['zai', 'kimi', 'minimax'] as const) {
+  for (const id of ['zai', 'kimi', 'minimax', 'agy'] as const) {
     const provider = getProvider(id);
     assert.equal(provider.probeKind, 'estimated');
     const ctx: ProbeContext = {

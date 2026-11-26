@@ -3,6 +3,7 @@
 # agent-warmup OpenCode runner. It is shared by OpenCode Go, Z.AI Coding Plan
 # and MiniMax Token Plan; OpenCode's own credential store selects the account.
 set -euo pipefail
+umask 077
 
 # Robust minimal PATH (launchd/cron start with a bare PATH).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"

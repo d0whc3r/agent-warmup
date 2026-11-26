@@ -10,7 +10,8 @@ import { formatStamp, parseStampMs } from './time.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Retention in days. Env-overridable so the arm script and the CLI agree on one knob.
-const RETENTION_DAYS = Number(process.env.WARMUP_LOG_RETENTION_DAYS) || 14;
+const rawRetention = Number(process.env.WARMUP_LOG_RETENTION_DAYS);
+const RETENTION_DAYS = Number.isFinite(rawRetention) && rawRetention >= 1 ? rawRetention : 14;
 
 // Rolling logs are trimmed line-by-line by their [yyyy-MM-dd HH:mm:ss] prefix.
 const ROLLING_LOGS = [
@@ -29,8 +30,8 @@ const STAMP_RE = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/;
 // Append a timestamped line to warmup.log. Best-effort: logging must never throw.
 export function appendLog(now: Date, line: string): void {
   try {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-    fs.appendFileSync(WARMUP_LOG, `[${formatStamp(now)}] ${line}\n`);
+    fs.mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
+    fs.appendFileSync(WARMUP_LOG, `[${formatStamp(now)}] ${line}\n`, { mode: 0o600 });
   } catch {
     /* logging is best-effort */
   }
@@ -79,7 +80,7 @@ function pruneRollingLog(file: string, cutoffMs: number): void {
     return; // missing → nothing to prune
   }
   const next = retainRecentLines(text, cutoffMs);
-  if (next !== text) fs.writeFileSync(file, next);
+  if (next !== text) fs.writeFileSync(file, next, { mode: 0o600 });
 }
 
 function prunePaneFiles(cutoffMs: number): void {

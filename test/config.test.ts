@@ -100,3 +100,22 @@ test('parseConfig tolerates blanks, comments, quotes, and inline comments', () =
   assert.equal(c.tmuxSession, 'my-sess');
   assert.deepEqual(c.schedule, [8, 13, 18]);
 });
+
+test('normalization strips newlines from binary and model to prevent env injection', () => {
+  const multi = parseMultiConfig(
+    serializeMultiConfig({
+      ...DEFAULT_MULTI,
+      providers: {
+        ...DEFAULT_MULTI.providers,
+        claude: {
+          ...DEFAULT_MULTI.providers.claude!,
+          binary: '/usr/bin/claude\nWARMUP_MODE=fixed',
+          model: 'haiku\r\nWARMUP_SCHEDULER=cron',
+        },
+      },
+    }),
+  );
+  assert.equal(multi.shared.mode, 'smart');
+  assert.ok(!multi.providers.claude!.binary.includes('\n'));
+  assert.ok(!multi.providers.claude!.model.includes('\n'));
+});

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 // launchctl/crontab I/O is thin glue and not exercised here).
 import { test } from 'node:test';
 
-import { buildBlock, stripBlock } from '../src/cron.js';
+import { buildBlock, shellQuote, stripBlock } from '../src/cron.js';
 import { generatePlist } from '../src/launchd.js';
 import type { MultiConfig, SmartConfig } from '../src/types.js';
 
@@ -132,4 +132,22 @@ test('stripBlock removes our marked block and leaves foreign lines untouched', (
   // Idempotent: stripping then re-appending never duplicates the block markers.
   const reapplied = stripBlock(withBlock) + '\n' + buildBlock(fixed);
   assert.equal(count(reapplied, '# >>> claude-warmup >>>'), 1);
+});
+
+test('shellQuote leaves clean paths unquoted and safely quotes spaces/metacharacters', () => {
+  assert.equal(shellQuote('/usr/local/bin/node'), '/usr/local/bin/node');
+  assert.equal(shellQuote("/Users/a b/o'reilly/log"), "'/Users/a b/o'\\''reilly/log'");
+  assert.equal(shellQuote('$(id)'), "'$(id)'");
+});
+
+test('buildBlock and generatePlist tolerate an empty enabled set or empty schedule', () => {
+  const emptySmart: MultiConfig = { ...smart, shared: { ...smart.shared, providers: [] } };
+  assert.match(buildBlock(emptySmart), /# \(no enabled providers\)/);
+  assert.equal(count(generatePlist(emptySmart), '<key>Hour</key>'), 0);
+
+  const emptyFixed: MultiConfig = {
+    ...fixed,
+    providers: { ...fixed.providers, claude: { ...fixed.providers.claude!, schedule: [] } },
+  };
+  assert.match(buildBlock(emptyFixed), /# \(no scheduled hours\)/);
 });

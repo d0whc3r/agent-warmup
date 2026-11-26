@@ -16,12 +16,15 @@ export default defineConfig({
   platform: 'node',
   target: 'node26',
   outDir: 'dist',
-  noExternal: [/.*/],
+  deps: {
+    alwaysBundle: [/.*/],
+    onlyBundle: false,
+  },
   alias: { 'react-devtools-core': reactDevtoolsStub },
-  // The Ink UI (src/ui/App.jsx) is authored in JSX; compile it with React's
+  // The Ink UI (src/ui/App.tsx) is authored in JSX; compile it with React's
   // automatic runtime so files don't need to import React themselves.
   inputOptions: { transform: { jsx: 'react-jsx' } },
-  outputOptions: { inlineDynamicImports: true },
+  outputOptions: { codeSplitting: false },
   dts: false,
   clean: true,
   shims: false,

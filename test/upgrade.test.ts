@@ -38,6 +38,10 @@ test('latestTag reports an unusable answer instead of guessing a tag', async () 
     withFetch(() => Response.json({}), latestTag),
     /no tag/,
   );
+  await assert.rejects(
+    withFetch(() => Response.json({ tag_name: '../evil;id' }), latestTag),
+    /invalid release tag/,
+  );
 });
 
 test('version prints the version compiled into the CLI', () => {

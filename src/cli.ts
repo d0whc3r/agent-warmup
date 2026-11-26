@@ -81,8 +81,9 @@ function saveField(patch: Partial<Config>, summary: string): void {
       },
     },
   });
-  if (getStatus().active) schedule.applySchedule(next);
-  console.log(`✓ ${summary}${getStatus().active ? ' (applied)' : ''}`);
+  const wasActive = getStatus().active;
+  if (wasActive) schedule.applySchedule(next);
+  console.log(`✓ ${summary}${wasActive ? ' (applied)' : ''}`);
 }
 
 function requireChoice<T extends string>(
@@ -201,13 +202,15 @@ switch (cmd) {
     const live = await adapter.probe(ctx);
     const cache = readCache();
     cache.providers = cache.providers ?? {};
-    const usage = live ?? adapter.inferFromCache(ctx, cache.providers[id] ?? null);
+    const prev = cache.providers[id];
+    const usage = live ?? adapter.inferFromCache(ctx, prev ?? null);
     cache.providers[id] = {
-      ...cache.providers[id],
+      ...prev,
       capturedAt: usage.capturedAt,
       session: usage.session,
-      week: usage.week,
-      weekModel: usage.weekModel,
+      week: live ? usage.week : (usage.week ?? prev?.week ?? null),
+      weekModel: live ? usage.weekModel : (usage.weekModel ?? prev?.weekModel),
+      inferred: !live,
     };
     writeCache(cache);
     const u = formatUsage(cache.providers[id] ?? null);
@@ -243,17 +246,20 @@ switch (cmd) {
     const ok = schedule.applySchedule(loadConfig());
     console.log(ok ? '✓ scheduler installed and loaded' : '✗ failed to load scheduler');
     printStatus();
+    if (!ok) process.exit(1);
     break;
   }
   case 'stop':
     schedule.stopSchedule();
     console.log('✓ schedulers removed');
     break;
-  case 'restart':
+  case 'restart': {
     schedule.stopSchedule();
-    schedule.applySchedule(loadConfig());
-    console.log('✓ scheduler reloaded');
+    const ok = schedule.applySchedule(loadConfig());
+    console.log(ok ? '✓ scheduler reloaded' : '✗ failed to reload scheduler');
+    if (!ok) process.exit(1);
     break;
+  }
   case 'enable':
     console.log(launchd.enable() ? '✓ enabled' : '✗ failed');
     break;
@@ -414,10 +420,10 @@ function handleProvider(rest: string[]): void {
         },
         providers: { ...multi.providers, [pid]: { ...provider, enabled } },
       });
+      const actual = next.providers[pid]?.enabled ?? false;
       console.log(
-        `✓ ${pid} ${enabled ? 'enabled' : 'disabled'}${reapplyIfActive() ? ' (applied)' : ''}`,
+        `✓ ${pid} ${actual ? 'enabled' : 'disabled'}${reapplyIfActive() ? ' (applied)' : ''}`,
       );
-      void next;
       break;
     }
     case 'select': {
@@ -481,8 +487,8 @@ function handleProvider(rest: string[]): void {
         ...multi,
         providers: { ...multi.providers, [pid]: { ...provider, ...patch } },
       });
-      console.log(`✓ ${pid} schedule → ${hours.join(' ')}${reapplyIfActive() ? ' (applied)' : ''}`);
-      void next;
+      const out = next.providers[pid]?.schedule ?? hours;
+      console.log(`✓ ${pid} schedule → ${out.join(' ')}${reapplyIfActive() ? ' (applied)' : ''}`);
       break;
     }
     default:

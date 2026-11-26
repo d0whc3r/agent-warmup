@@ -12,10 +12,10 @@ import { decideWindow, inferWindowFromCache, recordArmWithCooldown } from './com
 import type { ProbeContext, Provider } from './types.js';
 
 interface SubscriptionProviderOptions {
-  id: Extract<ProviderId, 'codex' | 'zai' | 'kimi' | 'minimax'>;
+  id: Extract<ProviderId, 'codex' | 'zai' | 'kimi' | 'minimax' | 'agy'>;
   name: string;
   models: readonly string[];
-  script: 'codex' | 'kimi' | 'opencode';
+  script: 'codex' | 'kimi' | 'opencode' | 'agy';
   binaryEnv: string;
   probe?: Provider['probe'];
   // Only for the opencode-backed plans; see Provider.credentialKey.
@@ -160,4 +160,12 @@ export const minimaxProvider = createSubscriptionProvider({
   script: 'opencode',
   binaryEnv: 'OPENCODE_BIN',
   credentialKey: 'minimax-coding-plan',
+});
+
+export const agyProvider = createSubscriptionProvider({
+  id: 'agy',
+  name: 'Antigravity CLI',
+  models: ['gemini-4-hydrogen', 'gemini-4-carbon', 'gemini-4-neon'],
+  script: 'agy',
+  binaryEnv: 'AGY_BIN',
 });

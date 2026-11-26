@@ -9,7 +9,7 @@ working. A _warmup_ is one deliberately tiny model request: on plans with an
 anchored five-hour window it aligns the next reset with a useful time; on
 rolling-window plans it is just a scheduled readiness pulse.
 
-Works with Claude Code, OpenAI Codex, Z.AI, Kimi, OpenCode Go and MiniMax —
+Works with Claude Code, OpenAI Codex, Z.AI, Kimi, OpenCode Go, MiniMax and Antigravity CLI (`agy`) —
 see [supported providers](docs/providers.md).
 
 ## Install

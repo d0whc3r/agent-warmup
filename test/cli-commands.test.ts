@@ -96,7 +96,7 @@ test('provider list shows every built-in agent and marks the selected one', () =
   const result = s.run('provider', 'list');
   assert.equal(result.status, 0, result.stderr);
   const listed = plain(result.stdout);
-  for (const id of ['claude', 'codex', 'zai', 'kimi', 'opencode', 'minimax']) {
+  for (const id of ['claude', 'codex', 'zai', 'kimi', 'opencode', 'minimax', 'agy']) {
     assert.ok(new RegExp(`^[●○] ${id}\\s`, 'm').test(listed), `${id} is missing`);
   }
   assert.match(listed, /codex.*enabled=true.*usage=live.*\(selected\)/);

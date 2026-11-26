@@ -49,7 +49,7 @@ export async function runNow(id?: ProviderId, now: Date = new Date()): Promise<n
     ...adapter.armEnv(ctx),
   };
   // Expand provider-supplied binary paths after the adapter has populated them.
-  for (const key of ['CLAUDE_BIN', 'CODEX_BIN', 'KIMI_BIN', 'OPENCODE_BIN']) {
+  for (const key of ['CLAUDE_BIN', 'CODEX_BIN', 'KIMI_BIN', 'OPENCODE_BIN', 'AGY_BIN']) {
     if (env[key]) env[key] = expandHome(env[key]);
   }
   const status = await spawnArm(selected, script, env);
