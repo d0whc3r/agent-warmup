@@ -182,7 +182,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  undici@>=7.0.0 <7.30.1: ^7.30.1
+  undici@>=7.0.0 <7.30.1: ^8.0.0
   undici@>=4.0.0 <6.29.1: ^6.29.1
   fast-uri@>=3.0.0 <3.1.9: ^3.1.9
 
@@ -2758,9 +2758,9 @@ packages:
     resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
     engines: {node: '>=18.17'}
 
-  undici@7.30.2:
-    resolution: {integrity: sha512-mLyPQnHwUxaM/rideoK/+KL8DaAJLRl4aBCfmX444aCSLnIaomqPLtNRe2jdCYcsk5wZzXrDIQC8ZeYNRAYyIA==}
-    engines: {node: '>=20.18.1'}
+  undici@8.13.1:
+    resolution: {integrity: sha512-Kt7EaPjh0s93lJH/PmW3d5rhkcpUa6fS3jqZ7+YGxNd9L7Xy/i827xe4C2uhhq+pJebM4tQOl5AgHmW11G5Skg==}
+    engines: {node: '>=22.19.0'}
 
   unicode-emoji-modifier-base@1.0.0:
     resolution: {integrity: sha512-yLSH4py7oFH3oG/9K+XWrz1pSi3dfUrWEnInbxMfArOfc1+33BlGPQtLsOYwvdMy11AwUBetYuaRxSPqgkq+8g==}
@@ -3624,7 +3624,7 @@ snapshots:
       p-filter: 4.1.0
       semantic-release: 26.0.1(supports-color@7.2.0)
       tinyglobby: 0.2.17
-      undici: 7.30.2
+      undici: 8.13.1
       url-join: 5.0.0
     transitivePeerDependencies:
       - kerberos
@@ -5053,7 +5053,7 @@ snapshots:
 
   undici@6.29.1: {}
 
-  undici@7.30.2: {}
+  undici@8.13.1: {}
 
   unicode-emoji-modifier-base@1.0.0: {}
 
