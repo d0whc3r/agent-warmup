@@ -1,0 +1,36 @@
+# GoReleaser v2 configuration. The release workflow runs it after release-please creates a tag.
+# Reference: https://goreleaser.com/customization/
+version: 2
+
+project_name: agent-warmup
+
+builds:
+  - id: agent-warmup
+    main: ./cmd/agent-warmup
+    binary: agent-warmup
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # The Go linker ad-hoc signs darwin/arm64 binaries, also when it cross-compiles.
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+# install.sh and `agent-warmup upgrade` download these exact names.
+archives:
+  - formats: [binary]
+    name_template: agent-warmup-{{ .Os }}-{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# release-please writes CHANGELOG.md and the release notes.
+changelog:
+  disable: true
+
+release:
+  mode: keep-existing

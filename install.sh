@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# Install agent-warmup from a GitHub Release into ~/.local/bin (or INSTALL_DIR).
+# Install agent-warmup from a GitHub release into ~/.local/bin (or INSTALL_DIR).
 #
 #   curl -fsSL https://raw.githubusercontent.com/d0whc3r/agent-warmup/main/install.sh | bash
 #
 # Env:
-#   INSTALL_DIR  destination directory          (default: ~/.local/bin)
-#   WARMUP_HOME  config/log directory           (default: ~/.agent-warmup)
-#   VERSION      release tag, e.g. v1.2.3       (default: latest)
-#   REPO         GitHub owner/repo              (default: d0whc3r/agent-warmup)
+#   INSTALL_DIR  destination directory     (default: ~/.local/bin)
+#   VERSION      release tag, like v1.2.3  (default: latest)
+#   WARMUP_HOME  config and log directory  (default: ~/.agent-warmup)
 set -euo pipefail
 
-REPO="${REPO:-d0whc3r/agent-warmup}"
+REPO="d0whc3r/agent-warmup"
 BIN_NAME="agent-warmup"
+SUMS_NAME="checksums.txt"
+# Global, so the EXIT trap still sees it after install_binary returns.
+tmp_dir=""
+
+fail() {
+  echo "✗ $*" >&2
+  exit 1
+}
 
 need_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "✗ $1 is required" >&2
-    exit 1
-  fi
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required. Install it and run the script again."
 }
 
 detect_target() {
@@ -25,248 +29,142 @@ detect_target() {
   case "$(uname -s)" in
     Darwin) os=darwin ;;
     Linux) os=linux ;;
-    MINGW* | MSYS* | CYGWIN*)
-      echo "✗ Windows is not supported (the warmup runner needs tmux + bash)" >&2
-      exit 1
-      ;;
-    *)
-      echo "✗ unsupported OS: $(uname -s) (macOS and Linux only)" >&2
-      exit 1
-      ;;
+    *) fail "unsupported OS: $(uname -s) (macOS and Linux only)" ;;
   esac
   case "$(uname -m)" in
-    x86_64 | amd64) arch=x64 ;;
+    x86_64 | amd64) arch=amd64 ;;
     arm64 | aarch64) arch=arm64 ;;
-    *)
-      echo "✗ unsupported arch: $(uname -m) (x64 and arm64 only)" >&2
-      exit 1
-      ;;
+    *) fail "unsupported architecture: $(uname -m) (amd64 and arm64 only)" ;;
   esac
   echo "${os}-${arch}"
 }
 
-validate_repo() {
-  if [[ ! "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "✗ invalid REPO: ${REPO} (expected owner/repo)" >&2
-    exit 1
-  fi
-}
-
-release_tag() {
+release_base_url() {
   local version="${VERSION:-latest}"
   if [ "$version" = latest ]; then
-    echo latest
+    echo "https://github.com/${REPO}/releases/latest/download"
     return
   fi
   if [[ ! "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    echo "✗ invalid VERSION: ${version} (expected semver like v1.2.3 or latest)" >&2
-    exit 1
+    fail "invalid VERSION: ${version} (expected a tag like v1.2.3, or latest)"
   fi
-  case "$version" in
-    v*) echo "$version" ;;
-    *) echo "v${version}" ;;
-  esac
-}
-
-release_asset_url() {
-  local asset="$1"
-  local tag
-  validate_repo
-  tag="$(release_tag)"
-  if [ "$tag" = latest ]; then
-    echo "https://github.com/${REPO}/releases/latest/download/${asset}"
-  else
-    echo "https://github.com/${REPO}/releases/download/${tag}/${asset}"
-  fi
-}
-
-download_url() {
-  local target="$1"
-  release_asset_url "${BIN_NAME}-${target}"
+  echo "https://github.com/${REPO}/releases/download/v${version#v}"
 }
 
 sha256_of() {
-  local file="$1"
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$file" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$file" | awk '{print $1}'
-  else
-    return 1
+    sha256sum "$1" | awk '{ print $1 }'
+    return
   fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{ print $1 }'
+    return
+  fi
+  fail "sha256sum or shasum is required to check the download. Install one of them."
 }
 
 verify_checksum() {
-  local file="$1" asset="$2" sums_file="$3" expected actual
-  [ -s "$sums_file" ] || return 0
-  expected="$(awk -v name="$asset" '$2 == name && $1 ~ /^[0-9a-fA-F]{64}$/ { print tolower($1); exit }' "$sums_file")"
-  [ -n "$expected" ] || return 0
-  actual="$(sha256_of "$file" | tr '[:upper:]' '[:lower:]')" || return 0
+  local file="$1" asset="$2" sums="$3" expected actual
+  expected="$(awk -v name="$asset" '$2 == name { print tolower($1); exit }' "$sums")"
+  [ -n "$expected" ] || fail "${SUMS_NAME} has no entry for ${asset}"
+  actual="$(sha256_of "$file")"
   if [ "$actual" != "$expected" ]; then
-    echo "✗ checksum mismatch for ${asset}" >&2
-    echo "  expected: ${expected}" >&2
-    echo "  actual:   ${actual}" >&2
-    exit 1
+    fail "checksum mismatch for ${asset} (expected ${expected}, got ${actual})"
   fi
 }
 
-install_dir() {
-  echo "${INSTALL_DIR:-${HOME}/.local/bin}"
+download() {
+  curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 -o "$2" "$1" || fail "download failed: $1"
 }
 
-path_has_dir() {
+# A global npm or pnpm link of the old TypeScript build can come first on PATH and hide the new binary.
+warn_shadowed() {
+  local dest="$1" name found
+  for name in "$BIN_NAME" claude-warmup; do
+    while IFS= read -r found; do
+      [ "$found" = "$dest" ] && break
+      echo "! ${found} is an old install that comes before ${dest} on PATH."
+      case "$found" in
+        *pnpm*) echo "  Remove it with: pnpm rm -g ${name}" ;;
+        *node* | *npm* | *nvm* | *volta* | *fnm*) echo "  Remove it with: npm rm -g ${name}" ;;
+        *) echo "  Remove it with: command rm -f ${found}" ;;
+      esac
+    done < <(type -aP "$name" 2>/dev/null || true)
+  done
+}
+
+path_hint() {
   local dir="$1"
   case ":${PATH}:" in
-    *":${dir}:"*) return 0 ;;
-    *) return 1 ;;
+    *":${dir}:"*) return ;;
   esac
-}
-
-shell_rc_hint() {
+  echo "  ${dir} is not on PATH. Add it to your shell profile:"
   case "${SHELL:-}" in
-    */zsh) echo "${HOME}/.zshrc" ;;
-    */bash) echo "${HOME}/.bashrc" ;;
-    */fish) echo "${HOME}/.config/fish/config.fish" ;;
-    *) echo "your shell profile" ;;
+    */fish) echo "    fish_add_path ${dir}" ;;
+    *) echo "    export PATH=\"${dir}:\$PATH\"" ;;
   esac
-}
-
-verify_binary() {
-  local dest="$1"
-  if [ "${INSTALL_VERIFY:-1}" = 0 ]; then
-    return 0
-  fi
-  if "$dest" help >/dev/null 2>&1; then
-    return 0
-  fi
-  echo "✗ ${dest} failed to run" >&2
-  if [ "$(uname -s)" = Darwin ]; then
-    echo "  macOS Gatekeeper may have blocked it. System Settings → Privacy & Security → Open Anyway" >&2
-    echo "  or: xattr -d com.apple.quarantine ${dest}" >&2
-  fi
-  exit 1
-}
-
-config_path() {
-  echo "${WARMUP_HOME:-${HOME}/.agent-warmup}/warmup.env"
-}
-
-# The binary writes a fully commented warmup.env from its built-in defaults on any
-# run, so a fresh install lands with a template to edit. An existing config is kept.
-# `existed` is sampled before the binary is ever run, since verify_binary already
-# triggers the seed.
-seed_config() {
-  local dest="$1" existed="$2" cfg
-  cfg="$(config_path)"
-  if [ "$existed" = 1 ]; then
-    echo "  config    ${cfg} (kept)"
-    return 0
-  fi
-  "$dest" help >/dev/null 2>&1 || true
-  if [ -f "$cfg" ]; then
-    echo "  config    ${cfg}"
-  else
-    echo "  config    ${cfg} (created on first run)"
-  fi
 }
 
 install_binary() {
-  local target asset url sums_url dir dest tmp sums_tmp cfg_existed=0
   : "${HOME:?HOME is not set}"
   need_cmd curl
-  need_cmd mktemp
   need_cmd uname
 
+  local target asset base dir dest staged cfg cfg_existed=0
   target="$(detect_target)"
   asset="${BIN_NAME}-${target}"
-  url="$(download_url "$target")"
-  sums_url="$(release_asset_url "SHA256SUMS")"
-  dir="$(install_dir)"
+  base="$(release_base_url)"
+  dir="${INSTALL_DIR:-${HOME}/.local/bin}"
   dest="${dir}/${BIN_NAME}"
+  cfg="${WARMUP_HOME:-${HOME}/.agent-warmup}/config.toml"
 
-  echo "› installing ${BIN_NAME} (${target})"
-  echo "  ${url}"
+  echo "› installing ${asset} from ${base}"
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/${BIN_NAME}.XXXXXX")"
+  trap 'command rm -rf -- "$tmp_dir"' EXIT
 
-  mkdir -p "$dir"
-  tmp="$(mktemp "${TMPDIR:-/tmp}/${BIN_NAME}.XXXXXX")"
-  sums_tmp="$(mktemp "${TMPDIR:-/tmp}/${BIN_NAME}-sums.XXXXXX")"
-  trap 'rm -f "$tmp" "$sums_tmp"' EXIT
+  download "${base}/${asset}" "${tmp_dir}/${asset}"
+  download "${base}/${SUMS_NAME}" "${tmp_dir}/${SUMS_NAME}"
+  verify_checksum "${tmp_dir}/${asset}" "$asset" "${tmp_dir}/${SUMS_NAME}"
 
-  curl -fsSL --proto=https --tlsv1.2 --retry 2 --retry-delay 1 -o "$sums_tmp" "$sums_url" 2>/dev/null || rm -f "$sums_tmp"
-
-  if ! curl -fL --proto=https --tlsv1.2 --retry 3 --retry-delay 1 -o "$tmp" "$url"; then
-    echo "✗ failed to download ${url}" >&2
-    echo "  Check https://github.com/${REPO}/releases for available assets." >&2
-    exit 1
-  fi
-  if [ ! -s "$tmp" ]; then
-    echo "✗ download was empty: ${url}" >&2
-    exit 1
-  fi
-
-  verify_checksum "$tmp" "$asset" "$sums_tmp"
-  rm -f "$sums_tmp"
-
-  chmod +x "$tmp"
+  chmod 0755 "${tmp_dir}/${asset}"
   if [ "$(uname -s)" = Darwin ]; then
-    xattr -d com.apple.quarantine "$tmp" 2>/dev/null || true
+    xattr -d com.apple.quarantine "${tmp_dir}/${asset}" 2>/dev/null || true
   fi
+  mkdir -p "$dir"
+  # Copy next to the destination, then rename: the rename is atomic on one
+  # file system, so a running agent-warmup never sees a half-written binary.
+  staged="${dir}/.${BIN_NAME}.$$"
+  command cp -f "${tmp_dir}/${asset}" "$staged"
+  mv -f "$staged" "$dest"
 
-  rm -f "$dest"
-  mv "$tmp" "$dest"
-  trap - EXIT
-
-  if [ -f "$(config_path)" ]; then
-    cfg_existed=1
+  [ -f "$cfg" ] && cfg_existed=1
+  if ! "$dest" version >/dev/null 2>&1; then
+    echo "✗ ${dest} failed to run" >&2
+    if [ "$(uname -s)" = Darwin ]; then
+      echo "  If Gatekeeper blocks it, allow it in System Settings > Privacy & Security > Open Anyway." >&2
+    fi
+    exit 1
   fi
-  verify_binary "$dest"
-
   echo "✓ installed ${dest}"
-  seed_config "$dest" "$cfg_existed"
-  if path_has_dir "$dir"; then
-    echo "  next      ${BIN_NAME} status"
+
+  # The binary removes what the old TypeScript install left behind: the launchd job, the cron block, and their tmux sessions.
+  "$dest" clean-legacy || echo "! legacy cleanup failed. Run: ${dest} clean-legacy"
+
+  if [ "$cfg_existed" = 1 ]; then
+    echo "  config    ${cfg} (kept)"
   else
-    echo "  PATH does not include ${dir}. Add this to $(shell_rc_hint):"
-    case "${SHELL:-}" in
-      */fish) echo "    fish_add_path ${dir}" ;;
-      *) echo "    export PATH=\"${dir}:\$PATH\"" ;;
-    esac
-    echo "  then run: ${dest} status"
+    echo "  config    ${cfg}"
   fi
+  warn_shadowed "$dest"
+  path_hint "$dir"
+  echo "  next      ${BIN_NAME} detect --apply"
 }
 
-main() {
-  case "${1:-}" in
-    --print-target)
-      detect_target
-      ;;
-    --print-url)
-      download_url "$(detect_target)"
-      ;;
-    --print-dir)
-      : "${HOME:?HOME is not set}"
-      install_dir
-      ;;
-    --print-config)
-      : "${HOME:?HOME is not set}"
-      config_path
-      ;;
-    -h | --help)
-      echo "Install ${BIN_NAME} from https://github.com/${REPO}/releases"
-      echo
-      echo "Usage: curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash"
-      echo
-      echo "Env: INSTALL_DIR  VERSION  REPO  WARMUP_HOME"
-      ;;
-    "")
-      install_binary
-      ;;
-    *)
-      echo "✗ unknown option: $1" >&2
-      echo "  try: bash install.sh --help" >&2
-      exit 1
-      ;;
-  esac
-}
-
-main "$@"
+case "${1:-}" in
+  "") install_binary ;;
+  -h | --help)
+    echo "Install ${BIN_NAME} from https://github.com/${REPO}/releases"
+    echo "Env: INSTALL_DIR  VERSION  WARMUP_HOME"
+    ;;
+  *) fail "unknown option: $1 (try --help)" ;;
+esac
