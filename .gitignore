@@ -1,20 +1,9 @@
-node_modules/
-*.log
-.DS_Store
-
-# coverage reports (coverage:lcov)
-coverage/
-
-# build artifacts (SEA bundle + blob + executable)
+# Build output
+bin/
 dist/
-*.blob
-# release cross-build (scripts/build-sea-release.sh)
-out/
-target-node/
-node.tar.gz
-sea.target.json
-.env
-.env.*
-!.env.example
 
-target-node/
+# Coverage
+coverage.out
+
+.DS_Store
+.env

@@ -1,0 +1,24 @@
+ agent-warmup ● active · next tick 13:45
+
+Edit claude · Claude Code
+▸ enabled      ‹ ● on ›
+  warmups run only for agents that are on
+  model        ‹ haiku ›
+  each warmup spends quota of this model
+  work hours   08-23
+  the window is ready when your workday starts
+  weekly stop  ‹ 90% ›
+  skips warmups when weekly use is above this, to save quota
+  binary       ~/.local/bin/claude
+  found automatically; set it only if detection fails
+
+
+
+
+
+
+
+
+
+ ↑   ↓  field   ←   →  change   enter  type   d  detect binary   esc  close
+ ?  keys   q  quit

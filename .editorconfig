@@ -1,6 +1,3 @@
-# Editor baseline for all files / all editors.
-# Whitespace lives here; JS/TS code style lives in .oxfmtrc.json (oxfmt's native
-# formatter does not read this file), and lint rules live in .oxlintrc.json.
 root = true
 
 [*]
@@ -11,6 +8,14 @@ indent_size = 2
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-# Two trailing spaces are a hard line break in Markdown — don't strip them.
+# gofumpt formats Go with tabs.
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[{Makefile,go.mod,go.sum}]
+indent_style = tab
+indent_size = 4
+
 [*.md]
 trim_trailing_whitespace = false

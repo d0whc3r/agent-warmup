@@ -1,0 +1,31 @@
+ agent-warmup ● active · next tick 13:45
+↑/k previous agent            space on/off           r run now        
+↓/j next agent                enter edit             a apply          
+←/h earlier hour              m     model            x stop schedulers
+→/l later hour                w     weekly stop      v log            
+[   work starts at cursor     d     detect binary    u refresh        
+]   work ends after cursor    /     command          ? keys           
+                                                     q quit           
+Commands · press / and type one, tab completes
+toggle <agent>                          weekly <agent> <percent>                edit [agent]
+enable <agent>                          detect <agent>                          logs
+disable <agent>                         run                                     help
+model <agent> [model]                   apply                                   quit
+binary <agent> <path>                   stop
+hours <agent> <start>-<end>             refresh
+Mouse: click a lane, hour, field, or key. Drag across hours to set work hours.
+Edits save at once. Schedule edits show ◇ unapplied until you press a.
+
+
+
+
+
+
+
+
+
+
+
+
+
+ esc  close   q  quit

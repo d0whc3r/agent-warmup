@@ -8,7 +8,6 @@
 
 ## Checklist
 
-- [ ] `pnpm run lint` passes
-- [ ] `pnpm run format:check` passes
-- [ ] `pnpm test` passes
-- [ ] README/docs updated if behavior changed
+- [ ] The PR title follows [Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, ...)
+- [ ] `make check` passes
+- [ ] If the behavior changed, the README and the docs show the change

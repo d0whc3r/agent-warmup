@@ -2,40 +2,69 @@ name: CI
 
 on:
   pull_request:
-  # Called by release.yml on push to main, so main is gated by the same checks
-  # without running this workflow twice per push.
-  workflow_call:
+  push:
+    branches: [main]
 
-# Cancel superseded runs on the same ref.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
+env:
+  GORELEASER_VERSION: v2.20.3
+
 jobs:
-  check:
-    name: Lint, format & test
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - run: make build
+      - run: make vet
+      - run: make test
+
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
-      # Must run before setup-node so its `cache: pnpm` finds pnpm on PATH.
-      # Version is read from the package.json "packageManager" field.
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+      - run: make tidy-check
+      - run: make fmt-check
+      # tools/go.mod pins golangci-lint. The action installs that same version.
+      - id: lint-version
+        run: echo "version=$(go list -modfile=tools/go.mod -m -f '{{.Version}}' github.com/golangci/golangci-lint/v2)" >> "$GITHUB_OUTPUT"
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ steps.lint-version.outputs.version }}
+      - run: make vuln
 
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm run typecheck
-
-      - run: pnpm run lint
-
-      - run: pnpm run format:check
-
-      - run: pnpm test
+  goreleaser:
+    name: GoReleaser check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: check

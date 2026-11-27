@@ -65,21 +65,21 @@ Multi-step work → state the plan up front:
 - Never commit unless asked — wait, even with changes staged.
 - Never push unless asked.
 - Never add a co-author.
-- Never reply to PR comments unless asked. Draft it, let the human post.
+- Never reply to PR comments unless asked. Draft it and let the human post.
 
 ## 6. Code Style
 
 **Readable at a glance. Flat, named, spaced.**
 
-- Extract recurring or meaningful values into named constants. A value that comes from a spec (HTTP 200, an API contract limit) gets a constant even with one use. Self-explanatory one-offs stay inline.
+- Extract recurring or meaningful values into named constants. A value that comes from a spec (HTTP 200, a five-hour window) gets a constant even with one use. Self-explanatory one-offs stay inline.
 - Flat over nested. Early `return` / `continue` instead of an `else` pyramid.
 - Function names under 30 characters.
-- String unions, not boolean parameters. `open({ mode: 'readonly' })` reads; `open(true)` doesn't.
+- Typed options, not boolean parameters. `Apply(ctx, ModeReload)` reads; `Apply(ctx, true)` doesn't. Add the type only when two real variants exist.
+- Wrap errors with `%w` and the action that failed. Never swallow one. `context.Context` comes first on anything that runs a process or a network call.
 - Let the reader breathe: blank line between logical blocks, one short comment saying _what_ the block does and _why_. ASCII diagram when a whole flow needs explaining.
-- Always braces, even on a one-line `if`.
-- Export nothing that nothing imports. Widening a module-local symbol into an export is a design change, ask first.
-- Program to levels of abstraction. Raw transport (fetch, Connect clients, storage keys) lives behind a hook or client module; components work in domain concepts.
-- Never punch through a layer. Component → hook → client → API. Not component → fetch.
+- Export nothing that nothing imports. Widening a package-local symbol into an export is a design change. Ask first.
+- No interface until two real implementations exist.
+- Never punch through a layer. `cli`/`tui` → `warmup`/`scheduler` → `provider` → `os/exec`. Only `cli` and `tui` print.
 
 ## 7. Words
 

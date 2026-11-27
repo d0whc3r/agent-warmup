@@ -1,0 +1,4 @@
+OpenCode Go weekly stats (2026-06-15 → 2026-06-22):
+  claude-sonnet-4           42,300 in / 18,200 out   $4.21
+  opencode-go/deepseek-v4-flash     1,234 in / 567 out   $0.12
+  gpt-4o                    120 in / 90 out   $0.05

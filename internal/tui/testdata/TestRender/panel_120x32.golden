@@ -1,0 +1,32 @@
+ agent-warmup ● active · next tick 13:45
+                                                                                │ 
+           00      04      08      12      16      20       Fri Nov 27          │ Edit claude · Claude Code
+                                     ▽▼                     ▼ 13:42  ▽ 13:00    │ ▸ enabled      ‹ ● on ›
+▸ claude   ················░░░░░██████◆███▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ 42% · resets 15:30  │   warmups run only for agents that ar…
+  codex    ················░░░░░░█████◆████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ active (estimated)… │   model        ‹ haiku ›
+  zai      ················································ off                 │   each warmup spends quota of this mo…
+  kimi     ················································ off                 │   work hours   08-23
+  opencode ················································ off                 │   the window is ready when your workd…
+  minimax  ················································ off                 │   weekly stop  ‹ 90% ›
+  agy      ················································ off                 │   skips warmups when weekly use is ab…
+           █ armed  ▒ predicted  ░ work hours  · off  ◆ next tick               │   binary       ~/.local/bin/claude
+                                                                                │   found automatically; set it only if…
+─ claude · Claude Code · ● on ───────────────────────────────────────────────── │ 
+model haiku · work 08-23 · weekly stop 90%                                      │ 
+binary ~/.local/bin/claude                                                      │ 
+usage 42% · resets 15:30 · week 18% · resets Dec 1 09:00 · read 5m ago          │ 
+next warmup 15:30 · tick 13:45 skip-active: window active until 15:30           │ 
+13:30 TICK [claude] skip-active — window active until 15:30 [via probe]         │ 
+10:30 DONE claude (status=0)                                                    │ 
+10:30 OK: Claude Code replied -> usage window armed                             │ 
+10:30 START claude (model=haiku workdir=/tmp/warmup)                            │ 
+10:30 TICK [claude] warm — no active window [via probe]                         │ 
+                                                                                │ 
+                                                                                │ 
+                                                                                │ 
+                                                                                │ 
+                                                                                │ 
+                                                                                │ 
+
+ ↑   ↓  field   ←   →  change   enter  type   d  detect binary   esc  close
+ ?  keys   q  quit

@@ -1,0 +1,24 @@
+ agent-warmup ● active · next tick 13:45
+
+           00      04      08      12      16      20       Fri Nov 27
+                                     ▽▼                     ▼ 13:42  ▽ 13:00
+▸ claude   ················░░░░░██████◆███▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ 42% · resets 15:30
+  codex    ················░░░░░░█████◆████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ active (estimated) …
+  zai      ················░░░░░░░░░░░◆▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒· idle (estimated)
+  kimi     ················░░░░░░░░░░░◆▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒· idle (estimated)
+  opencode ················░░░░░░░░░░░◆▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒· idle (estimated)
+  minimax  ················░░░░░░░░░░░◆▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒· idle (estimated)
+  agy      ················░░░░░░░░░░░◆▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒· idle (estimated)
+           █ armed  ▒ predicted  ░ work hours  · off  ◆ next tick
+
+─ claude · Claude Code · ● on ──────────────────────────────────────────────────
+model haiku · work 08-23 · weekly stop 90%
+binary ~/.local/bin/claude
+usage 42% · resets 15:30 · week 18% · resets Dec 1 09:00 · read 5m ago
+next warmup 15:30 · tick 13:45 skip-active: window active until 15:30
+13:30 TICK [claude] skip-active — window active until 15:30 [via probe]
+10:30 DONE claude (status=0)
+10:30 OK: Claude Code replied -> usage window armed
+
+ space  on/off   m  model   [   ]  work start/end   w  weekly stop   enter  edit
+ ←   →  hour   r  run now   a  apply   v  log   /  command   ?  keys   q  quit

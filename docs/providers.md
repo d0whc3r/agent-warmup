@@ -1,58 +1,51 @@
 # Supported providers
 
-| ID         | Service              | Runner                               | Usage strategy                        | Default model                      |
-| ---------- | -------------------- | ------------------------------------ | ------------------------------------- | ---------------------------------- |
-| `claude`   | Claude Code          | interactive Claude session in `tmux` | live `/usage`                         | `haiku`                            |
-| `codex`    | OpenAI Codex         | `codex exec`, read-only              | rate limits from local session logs   | `gpt-5.6-luna`                     |
-| `zai`      | Z.AI GLM Coding Plan | authenticated OpenCode provider      | local five-hour estimate              | `zai-coding-plan/glm-5.3-flash`    |
-| `kimi`     | Kimi Code            | `kimi -p`                            | rolling-window pulse + local estimate | `kimi-code/kimi-for-coding`        |
-| `opencode` | OpenCode Go          | `opencode run` + `opencode stats`    | live weekly + local session estimate  | `opencode-go/deepseek-v4-flash`    |
-| `minimax`  | MiniMax Token Plan   | authenticated OpenCode provider      | local five-hour estimate              | `minimax-coding-plan/MiniMax-M2.7` |
-| `agy`      | Antigravity CLI      | `agy --print --sandbox`              | local five-hour estimate              | `gemini-4-hydrogen`                |
+agent-warmup supports seven providers. Claude is enabled by default. Every other provider is opt-in, because each warmup uses real quota. Enable one with `agent-warmup provider <id> enable`.
 
-Claude is enabled by default. Every other provider is opt-in because a warmup
-consumes real quota.
+| ID | Service | Warmup command | Usage source | Default model |
+| --- | --- | --- | --- | --- |
+| `claude` | Claude Code | interactive Claude session in tmux | live `/usage` | `haiku` |
+| `codex` | OpenAI Codex | `codex exec --sandbox read-only` | rate limits in the local Codex session files | `gpt-5.6-luna` |
+| `zai` | Z.AI GLM Coding Plan | `opencode run` with the Z.AI provider | local five-hour estimate | `zai-coding-plan/glm-5.3-flash` |
+| `kimi` | Kimi Code | `kimi -p` | local five-hour estimate | `kimi-code/kimi-for-coding` |
+| `opencode` | OpenCode Go | `opencode run` | live weekly cost from `opencode stats`, local session estimate | `opencode-go/deepseek-v4-flash` |
+| `minimax` | MiniMax Token Plan | `opencode run` with the MiniMax provider | local five-hour estimate | `minimax-coding-plan/MiniMax-M2.7` |
+| `agy` | Antigravity CLI | `agy --print --sandbox` | local five-hour estimate | `gemini-4-hydrogen` |
 
-For Z.AI and MiniMax, connect the corresponding Coding Plan inside OpenCode
-first (`opencode auth login`). Credentials stay in each vendor CLI's own auth
-store; `agent-warmup` never persists API keys.
+## Contents
 
-Neither plan ships a CLI of its own — both drive the `opencode` binary — so
-having OpenCode installed says nothing about whether they can run. `detect` and
-`provider list` therefore report them as missing until OpenCode holds their
-credential (`zai-coding-plan`, `minimax-coding-plan`), rather than showing three
-usable agents where there is one binary and one working login.
+- [Before you enable a provider](#before-you-enable-a-provider)
+- [How each provider reads usage](#how-each-provider-reads-usage)
+- [Quota and safety](#quota-and-safety)
+- [Why these providers](#why-these-providers)
 
-## How usage is read
+## Before you enable a provider
 
-Z.AI, Kimi, MiniMax and Antigravity CLI expose no stable machine-readable quota endpoint suitable
-for unattended polling, so the CLI conservatively treats a successful warmup
-within the last five hours as an active window — shown as `active (estimated)`
-in status and the TUI.
+- Install the provider CLI and log in with it once by hand. agent-warmup never stores API keys. Each CLI keeps its own credentials.
+- Run `agent-warmup detect --apply` to save the absolute path of each CLI.
+- Install `tmux` for Claude Code.
 
-Codex reads the five-hour and weekly percentages its own sessions log under
-`~/.codex/sessions`: the rollout file each session writes is the only place the
-CLI records its server-side rate limits. The warmup runs `codex exec` **without**
-`--ephemeral` for exactly that reason — an ephemeral turn arms the window but
-writes nothing, leaving the reset clock frozen at your last interactive session.
-The cost is one small rollout file per warmup, which Codex never prunes.
+Z.AI and MiniMax have no CLI of their own. Both run through the `opencode` binary. Connect each plan in OpenCode first with `opencode auth login`. Until OpenCode holds the credential (`zai-coding-plan` or `minimax-coding-plan`), `detect` and `provider list` show the provider as blocked. This prevents one OpenCode binary from looking like three working providers.
+
+## How each provider reads usage
+
+- Claude opens a short tmux session and reads the `/usage` screen. This check is free: it sends no message and does not start a window.
+- Codex reads the five-hour and weekly percentages from the newest session files under `~/.codex/sessions`. These files are the only place where Codex records its server-side rate limits. For this reason, the warmup runs `codex exec` without `--ephemeral`. Each warmup leaves one small session file, which Codex does not delete.
+- OpenCode Go reads the weekly cost from `opencode stats` and converts it to a percentage of the weekly allowance.
+- Z.AI, Kimi, MiniMax, and Antigravity CLI have no stable usage endpoint for unattended checks. agent-warmup treats a successful warmup in the last five hours as an active window. The status shows it as `active (estimated)`.
+
+When a live check fails, the provider falls back to the same local estimate.
+
+## Quota and safety
+
+Each warmup is a real request that counts against your plan. Enable only the plans whose reset time you want to move.
+
+The warmup runs in an empty workdir with no project code. Codex runs read-only, Kimi loads an empty skills directory, Antigravity runs in its sandbox, and Claude starts in safe mode.
+
+Model IDs and binary paths change over time. Thus, both stay in `config.toml`, and the scheduler does not contain them.
 
 ## Why these providers
 
-MiniMax is included because its Token Plan also has a five-hour allowance. Kimi
-is included on request, but its official documentation calls the five-hour limit
-rolling: use it as an availability pulse, not as a way to shift a reset.
+Claude Code, Codex, Z.AI, OpenCode Go, and MiniMax have a five-hour allowance that starts with the first request, so a warmup moves the reset. Kimi documents its five-hour limit as rolling. Use it as an availability check, not to move a reset.
 
-Copilot, Gemini and Qwen are intentionally excluded because their relevant
-limits are fixed monthly/daily/weekly or genuinely sliding.
-
-## Quota semantics
-
-A warmup is a real billable/subscription request, including for pulse-only
-adapters. Enable only plans whose reset timing you intentionally want to align.
-Provider limits and model catalogs change over time, so model IDs and binary
-paths stay configurable instead of being baked into the scheduler.
-
-The warmup workdir contains no project code: Codex runs read-only, Kimi loads an
-empty skills directory, Claude starts in safe mode. Logs and
-output captures are retained for 14 days by default.
+agent-warmup does not support Copilot, Gemini, and Qwen. Their limits are monthly, daily, weekly, or truly sliding, so a warmup changes nothing.

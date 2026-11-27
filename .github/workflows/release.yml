@@ -1,102 +1,66 @@
 name: Release
 
-# Fully automated release driven by conventional commits. Every push to main runs
-# the CI checks and then semantic-release, which decides from the commit history
-# whether a release is due, computes the version, bumps package.json, cross-builds
-# the four single-executable (SEA) binaries from that bumped tree (prepare step, see
-# scripts/build-sea-release.sh), tags it and publishes the GitHub Release with the
-# binaries attached. Building inside `prepare` is what lets a binary report its own
-# version (`agent-warmup version`, used by `agent-warmup upgrade`). No release is
-# ever published without its assets. Manual dispatch only builds and publishes nothing.
-#
-# Build and release share one job on purpose: passing the binaries between jobs would
-# need actions/upload-artifact, and four ~100 MB SEA binaries per run eat the account's
-# Actions storage quota. Same job, same workspace, no artifacts. The cost is that the
-# four targets build sequentially instead of in parallel (~2-3 min extra wall clock).
-#
-# How cross-compile works: see scripts/build-sea-release.sh. sea-config.json keeps
-# useCodeCache/useSnapshot off (both are platform-specific and would crash a
-# cross-built binary).
-#
-# Signing: Linux needs none. macOS Mach-O is invalidated by the blob injection and
-# arm64 macOS refuses to run unsigned, so we ad-hoc sign it with rcodesign (the Linux
-# build of Apple's codesign). Ad-hoc signing lets it run locally but downloads still
-# hit Gatekeeper quarantine — proper distribution needs a Developer ID cert +
-# notarization (secrets), to be added here when available.
-#
-# Windows is out of scope: the warm mechanism drives a tmux session over bash, absent
-# on Windows.
-
+# release-please keeps a release PR open on main. When you merge it, release-please tags the
+# version and creates the GitHub release. GoReleaser then builds the binaries and uploads them to that release.
+# Both run in one workflow because a tag pushed with GITHUB_TOKEN starts no other workflow.
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 env:
-  # NOTE: must NOT be prefixed RCODESIGN_ — rcodesign treats RCODESIGN_* env vars
-  # as its config file values and would reject the unknown 'version' key.
-  APPLE_CODESIGN_VERSION: '0.29.0' # bump as new apple-platform-rs releases land
-  TARGETS: 'linux-x64 linux-arm64 darwin-x64 darwin-arm64'
+  GORELEASER_VERSION: v2.20.3
 
 jobs:
-  check:
-    name: CI
-    uses: ./.github/workflows/ci.yml
-
-  release:
-    name: Build & semantic-release
-    needs: check
+  release-please:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the tag, the release and the version bump commit
-      issues: write # comment on issues closed by the release
-      pull-requests: write # comment on the PRs it shipped
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v7
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          fetch-depth: 0 # commit-analyzer walks history back to the previous tag
-          persist-credentials: true # @semantic-release/git pushes the version bump
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
-      # Must run before setup-node so its `cache: pnpm` finds pnpm on PATH.
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
+  goreleaser:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write # sign the build provenance
+      attestations: write # store the build provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # Fetched once and reused by both macOS targets.
-      - name: Fetch rcodesign
-        run: |
-          PKG="apple-codesign-${APPLE_CODESIGN_VERSION}-x86_64-unknown-linux-musl"
-          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${APPLE_CODESIGN_VERSION}/${PKG}.tar.gz" -o rcodesign.tar.gz
-          tar xf rcodesign.tar.gz
-          FOUND="$(find . -name rcodesign -type f | head -1)" # tolerate layout changes
-          if [ -z "$FOUND" ]; then
-            echo "✗ rcodesign binary not found in ${PKG}.tar.gz" >&2
-            exit 1
-          fi
-          echo "RCODESIGN=$PWD/${FOUND#./}" >> "$GITHUB_ENV"
-
-      # On a push, semantic-release runs this same script in its `prepare` step —
-      # after the version bump, so the binaries carry the version being released.
-      # Manual dispatch has no version to bump, so it builds here as a smoke test.
-      - name: Build SEA binaries (smoke test)
-        if: github.event_name == 'workflow_dispatch'
-        run: bash scripts/build-sea-release.sh
-
-      # Manual dispatch stops at the build smoke test; only main pushes can publish.
-      - name: Release
-        if: github.event_name == 'push'
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      # No module cache: a poisoned cache must not reach a release build.
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: make test
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm exec semantic-release
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/agent-warmup-*
+            dist/checksums.txt
