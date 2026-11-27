@@ -1,29 +1,26 @@
 ---
 name: Bug report
-about: Something isn't working as described
+about: Something does not work as the documentation describes
 title: '[bug] '
 labels: bug
 ---
 
-**What happened**
+## What happened
 
-<!-- A clear description of the bug. -->
+<!-- Describe the bug. -->
 
-**Steps to reproduce**
+## Steps to reproduce
 
 1.
 2.
 
-**Expected behavior**
+## Expected behavior
 
-**Environment**
+## Environment
 
-- macOS version:
-- Node.js version (`node -v`):
-- Scheduler (`launchd` | `cron`):
-- Mode (`smart` | `fixed`):
+- OS and version:
+- agent-warmup version (`agent-warmup version`):
 
-**Logs**
+## Logs
 
-<!-- Paste `agent-warmup status` and relevant lines from
-     ~/.claude/warmup-logs/warmup.log. Redact anything sensitive. -->
+<!-- Paste the output of `agent-warmup status` and the related lines from ~/.agent-warmup/logs/warmup.log. Remove secrets and personal data. -->

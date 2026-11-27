@@ -1,14 +1,14 @@
 ---
 name: Feature request
-about: Suggest an idea or improvement
+about: Suggest an idea or an improvement
 title: '[feature] '
 labels: enhancement
 ---
 
-**Problem**
+## Problem
 
-<!-- What are you trying to do that's hard or impossible today? -->
+<!-- What do you want to do that is difficult or not possible today? -->
 
-**Proposed solution**
+## Proposed solution
 
-**Alternatives considered**
+## Alternatives that you considered
