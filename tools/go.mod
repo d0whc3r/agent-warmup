@@ -2,6 +2,8 @@ module github.com/d0whc3r/agent-warmup/tools
 
 go 1.26.0
 
+toolchain go1.27.4
+
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	golang.org/x/vuln/cmd/govulncheck
