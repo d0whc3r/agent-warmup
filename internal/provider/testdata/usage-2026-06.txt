@@ -1,0 +1,13 @@
+
+  Current session
+  ███████████████                                    30% used
+  Resets 3:30pm (Europe/Madrid)
+
+  Current week (all models)
+  ██                                                 4% used
+  Resets Jun 14 at 11am (Europe/Madrid)
+
+  Current week (Sonnet only)
+                                                     0% used
+
+  d to day · w to week
